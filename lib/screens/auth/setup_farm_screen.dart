@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/firestore_service.dart';
-import '../home/home_screen.dart';
+import 'package:farm_app/screens/main_screen.dart';
 
 class SetupFarmScreen extends StatefulWidget {
   const SetupFarmScreen({super.key});
@@ -62,7 +62,7 @@ class _SetupFarmScreenState extends State<SetupFarmScreen> {
 
       // Navigate to the home screen and remove all previous screens from the stack
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(builder: (context) => const MainScreen()),
         (Route<dynamic> route) => false,
       );
     } catch (e) {

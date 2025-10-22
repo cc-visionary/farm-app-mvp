@@ -30,24 +30,36 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_isLogin) {
-        await _auth.signInWithEmailAndPassword(email: _email, password: _password);
+        await _auth.signInWithEmailAndPassword(
+          email: _email,
+          password: _password,
+        );
         // The AuthWrapper in main.dart will handle navigation
       } else {
-        await _auth.createUserWithEmailAndPassword(email: _email, password: _password);
+        await _auth.createUserWithEmailAndPassword(
+          email: _email,
+          password: _password,
+        );
         // After successful signup, navigate to the farm setup screen.
         if (mounted) {
-           Navigator.of(context).pushReplacement(
-             MaterialPageRoute(builder: (ctx) => const SetupFarmScreen()),
-           );
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (ctx) => const SetupFarmScreen()),
+          );
         }
       }
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Authentication failed.'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(e.message ?? 'Authentication failed.'),
+          backgroundColor: Colors.red,
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('An unexpected error occurred.'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('An unexpected error occurred.'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
 
@@ -68,14 +80,20 @@ class _AuthScreenState extends State<AuthScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Your Logo
-                  Image.asset('assets/images/logo.png', height: 120), // Make sure you have this image!
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 120,
+                  ), // Make sure you have this image!
                   const SizedBox(height: 24),
 
                   // Welcome Text
                   Text(
                     _isLogin ? 'Welcome Back' : 'Create an Account',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -93,7 +111,10 @@ class _AuthScreenState extends State<AuthScreen> {
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
-                    validator: (value) => (value == null || !value.contains('@')) ? 'Please enter a valid email.' : null,
+                    validator: (value) =>
+                        (value == null || !value.contains('@'))
+                        ? 'Please enter a valid email.'
+                        : null,
                     onSaved: (value) => _email = value!,
                   ),
                   const SizedBox(height: 16),
@@ -106,11 +127,19 @@ class _AuthScreenState extends State<AuthScreen> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_isPasswordObscured ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => _isPasswordObscured = !_isPasswordObscured),
+                        icon: Icon(
+                          _isPasswordObscured
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () => setState(
+                          () => _isPasswordObscured = !_isPasswordObscured,
+                        ),
                       ),
                     ),
-                    validator: (value) => (value == null || value.length < 7) ? 'Password must be at least 7 characters.' : null,
+                    validator: (value) => (value == null || value.length < 7)
+                        ? 'Password must be at least 7 characters.'
+                        : null,
                     onSaved: (value) => _password = value!,
                   ),
                   const SizedBox(height: 24),
@@ -122,13 +151,20 @@ class _AuthScreenState extends State<AuthScreen> {
                     ElevatedButton(
                       onPressed: _submitForm,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4CAF50), // Bright green
+                        backgroundColor: const Color(
+                          0xFF4CAF50,
+                        ), // Bright green
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       child: Text(
                         _isLogin ? 'Login' : 'Sign Up',
-                        style: const TextStyle(fontSize: 18, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 16),
@@ -138,7 +174,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(_isLogin ? "Don't have an account?" : "Already have an account?"),
+                        Text(
+                          _isLogin
+                              ? "Don't have an account?"
+                              : "Already have an account?",
+                        ),
                         TextButton(
                           onPressed: () => setState(() => _isLogin = !_isLogin),
                           child: Text(_isLogin ? 'Sign Up' : 'Login'),

@@ -2,38 +2,129 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:iconsax/iconsax.dart'; // For modern icons
-import '../../authentication/application/auth_providers.dart';
+import 'package:go_router/go_router.dart';
+import 'package:iconsax/iconsax.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
+import '../../animals/application/animal_providers.dart';
+import '../../animals/presentation/animals_list_screen.dart';
+import '../../locations/presentation/locations_list_screen.dart';
+import '../application/farm_providers.dart';
+
+/// This is the main screen that holds the bottom navigation bar and pages.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _selectedIndex = 0; // To track active tab in bottom nav
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
 
-  // Placeholder for task state
-  final Map<String, bool> _tasks = {
-    'Vaccinate batch B-12': false,
-    'Move sow #5 to farrowing pen': true,
-    'Check chicken feeder levels': false,
-  };
+  // The pages that correspond to the bottom navigation bar items.
+  static const List<Widget> _widgetOptions = <Widget>[
+    DashboardView(),
+    AnimalsListScreen(), // Your new screen for listing animals
+    LocationsListScreen(),
+    Text('Reports Screen'), // Placeholder for reports
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(child: _widgetOptions.elementAt(_selectedIndex)),
+      // The floating action button for quick adds.
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Navigates to the 'add animal' screen using GoRouter.
+          context.push('/add-animal');
+        },
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      // The bottom navigation bar with a notch for the FAB.
+      bottomNavigationBar: BottomAppBar(
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildNavItem(icon: Iconsax.home, label: 'Home', index: 0),
+            _buildNavItem(icon: Iconsax.pet, label: 'Animals', index: 1),
+            const SizedBox(width: 40), // The space for the FAB
+            _buildNavItem(
+              icon: Iconsax.discover,
+              label: 'Locations',
+              index: 2,
+            ), // Changed from Inventory for now
+            _buildNavItem(icon: Iconsax.status_up, label: 'Reports', index: 3),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A helper widget to build each navigation item.
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+  }) {
+    final isSelected = _selectedIndex == index;
+    final color = isSelected ? Theme.of(context).primaryColor : Colors.grey;
+    return InkWell(
+      onTap: () => _onItemTapped(index),
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: 12, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- Dashboard View ---
+
+/// This is the main dashboard content displayed on the Home tab.
+class DashboardView extends ConsumerWidget {
+  const DashboardView({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the stream of animals to get real-time data.
+    final farmAsyncValue = ref.watch(currentFarmProvider);
+    final animalsAsync = ref.watch(animalsStreamProvider);
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        leading: const Padding(
-          padding: EdgeInsets.only(left: 8.0),
-          child: Icon(Icons.menu),
+        leading: IconButton(
+          icon: const Icon(Iconsax.setting_2),
+          onPressed: () {
+            // Navigate to the settings screen
+            context.push('/settings');
+          },
         ),
-        title: const Text('Green Valley Farm'),
+        title: farmAsyncValue.when(
+          data: (farm) =>
+              Text(farm?.name ?? 'Dashboard'), // Display farm name or a default
+          loading: () => const Text('Loading...'),
+          error: (_, __) => const Text('Farm Error'),
+        ),
         centerTitle: true,
         actions: [
           IconButton(
@@ -42,7 +133,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Icon(Icons.notifications_none, size: 28),
             ),
             onPressed: () {
-              // TODO: Handle notification tap
+              /* Handle notification tap */
             },
           ),
           const SizedBox(width: 8),
@@ -53,95 +144,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ## 1. Dashboard Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Dashboard', style: textTheme.headlineLarge),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Customize'),
-                  onPressed: () {
-                    // TODO: Handle dashboard customization
-                  },
+            // Dashboard Header
+            Text('Dashboard', style: textTheme.headlineLarge),
+            const SizedBox(height: 16),
+
+            // Swine Overview Card (Now with live data)
+            animalsAsync.when(
+              data: (animals) => _buildOverviewCard(
+                context: context,
+                title: 'Swine Overview',
+                data: {
+                  'Total Hogs': animals.length.toString(),
+                  // These would be calculated from animal properties in a real scenario
+                  'Pregnant Sows': '16',
+                  'Upcoming Farrowing': '3',
+                },
+              ),
+              loading: () => const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: Center(child: CircularProgressIndicator()),
                 ),
-              ],
+              ),
+              error: (err, stack) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('Error loading animals: $err'),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
 
-            // ## 2. Overview Cards
-            _buildOverviewCard(
-              icon: Iconsax.box,
-              title: 'Swine Overview',
-              data: {
-                'Total Hogs': '124',
-                'Pregnant Sows': '16',
-                'Upcoming Farrowing': '3',
-              },
-            ),
-            const SizedBox(height: 16),
-            _buildOverviewCard(
-              icon: Iconsax.wind, // Using a different icon for variety
-              title: 'Poultry Overview',
-              data: {
-                'Total Birds': '850',
-                'Daily Egg Count': '723',
-                'Feed Ratio': '2.1',
-              },
-            ),
+            // Tasks Card
+            _buildTasksCard(context),
             const SizedBox(height: 16),
 
-            // ## 3. Tasks Card
-            _buildTasksCard(),
-            const SizedBox(height: 16),
-
-            // ## 4. "Needs Attention" Card (Low Inventory)
-            _buildLowInventoryCard(),
-            const SizedBox(height: 16),
-            // ## BONUS: Financial Overview Card (As requested)
-            _buildOverviewCard(
-              icon: Iconsax.dollar_circle,
-              title: 'Financial Overview',
-              data: {
-                'Gross Revenue (MTD)': '\$12,450',
-                'Expenses (MTD)': '\$7,890',
-                'Net Profit': '\$4,560',
-              },
-            ),
-          ],
-        ),
-      ),
-
-      // ## 5. Bottom Navigation & Floating Action Button
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: Handle quick-add action
-        },
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(icon: Iconsax.home, label: 'Home', index: 0),
-            _buildNavItem(icon: Iconsax.pet, label: 'Animals', index: 1),
-            const SizedBox(width: 40), // The space for the FAB
-            _buildNavItem(icon: Iconsax.box_1, label: 'Inventory', index: 2),
-            _buildNavItem(icon: Iconsax.status_up, label: 'Reports', index: 3),
+            // Low Inventory Card
+            _buildLowInventoryCard(context),
           ],
         ),
       ),
     );
   }
 
-  // ### Reusable Widget Builders ###
+  // --- Reusable Widget Builders ---
 
   Widget _buildOverviewCard({
-    required IconData icon,
+    required BuildContext context,
     required String title,
     required Map<String, String> data,
   }) {
@@ -149,14 +198,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-                Icon(Iconsax.category),
-              ],
-            ),
+            Text(title, style: Theme.of(context).textTheme.headlineMedium),
             const Divider(height: 24),
             ...data.entries.map(
               (entry) => Padding(
@@ -184,32 +228,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildTasksCard() {
+  Widget _buildTasksCard(BuildContext context) {
+    // In a real app, this state would be managed by a provider
+    final tasks = {'Vaccinate batch B-12': false, 'Move sow #5': true};
     return Card(
       color: const Color(0xFFF1F8E9), // Light green background
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Tasks For You Today',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const Icon(Iconsax.category),
-              ],
+            Text(
+              'Tasks For You Today',
+              style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 8),
-            ..._tasks.entries.map((task) {
+            ...tasks.entries.map((task) {
               return CheckboxListTile(
                 title: Text(task.key),
                 value: task.value,
                 onChanged: (bool? value) {
-                  setState(() {
-                    _tasks[task.key] = value!;
-                  });
+                  /* Handle task state change */
                 },
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -222,7 +261,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildLowInventoryCard() {
+  Widget _buildLowInventoryCard(BuildContext context) {
     return Card(
       color: const Color(0xFFFFF8E1), // Light yellow background
       child: Padding(
@@ -230,20 +269,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Low Inventory',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const Icon(Iconsax.category),
-              ],
+            Text(
+              'Low Inventory',
+              style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 12),
-            _buildInventoryItem('Sow Feed', '2 bags left', Colors.red.shade700),
+            _buildInventoryItem(
+              context,
+              'Sow Feed',
+              '2 bags left',
+              Colors.red.shade700,
+            ),
             const SizedBox(height: 8),
             _buildInventoryItem(
+              context,
               'Heat Lamps',
               '5 units left',
               Colors.orange.shade800,
@@ -254,7 +293,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildInventoryItem(String title, String subtitle, Color textColor) {
+  Widget _buildInventoryItem(
+    BuildContext context,
+    String title,
+    String subtitle,
+    Color textColor,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -288,34 +332,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
             ),
             child: const Text('Reorder'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required int index,
-  }) {
-    final bool isSelected = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
-            ),
           ),
         ],
       ),

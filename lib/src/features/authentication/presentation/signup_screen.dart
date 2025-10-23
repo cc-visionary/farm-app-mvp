@@ -18,6 +18,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   String? _errorMessage;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -162,30 +163,52 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
                     // Sign Up Button - Styling is applied automatically
                     ElevatedButton(
-                      onPressed: () async {
-                        if (!_validateInputs()) {
-                          return;
-                        }
-                        try {
-                          await ref
-                              .read(authRepositoryProvider)
-                              .signUpWithEmail(
-                                email: _emailController.text.trim(),
-                                password: _passwordController.text.trim(),
-                              );
-                          if (mounted) context.go('/create-farm');
-                        } catch (e) {
-                          if (mounted) {
-                            setState(() {
-                              _errorMessage = e.toString().replaceFirst(
-                                'Exception: ',
-                                '',
-                              );
-                            });
-                          }
-                        }
-                      },
-                      child: const Text('Sign Up'),
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              if (!_validateInputs()) {
+                                return;
+                              }
+
+                              setState(
+                                () => _isLoading = true,
+                              ); // <-- START loading
+
+                              try {
+                                await ref
+                                    .read(authRepositoryProvider)
+                                    .signUpWithEmail(
+                                      email: _emailController.text.trim(),
+                                      password: _passwordController.text.trim(),
+                                    );
+                                if (mounted) context.go('/create-farm');
+                              } catch (e) {
+                                if (mounted) {
+                                  setState(() {
+                                    _errorMessage = e.toString().replaceFirst(
+                                      'Exception: ',
+                                      '',
+                                    );
+                                  });
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(
+                                    () => _isLoading = false,
+                                  ); // <-- STOP loading
+                                }
+                              }
+                            },
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : const Text('Sign Up'),
                     ),
                     const SizedBox(height: 24),
 

@@ -66,17 +66,36 @@ class AuthRepository {
     }
   }
 
-  // Create Farm (We can place this here or in a separate FarmRepository)
-  Future<void> createFarm({
+  Future<void> completeSetup({
+    required String userId,
+    required String displayName,
     required String farmName,
-    required String ownerId,
+    required List<String> selectedModules,
   }) async {
+    // Create a new farm document
+    final farmDoc = _firestore.collection('farms').doc();
+
     final newFarm = {
       'name': farmName,
-      'ownerId': ownerId,
+      'ownerId': userId,
       'createdAt': Timestamp.now(),
+      'enabledModules': selectedModules,
     };
-    await _firestore.collection('farms').add(newFarm);
+
+    // Create a reference to the user document
+    final userDoc = _firestore.collection('users').doc(userId);
+
+    // Use a batched write to ensure both operations succeed or fail together
+    WriteBatch batch = _firestore.batch();
+
+    // 1. Create the new farm
+    batch.set(farmDoc, newFarm);
+
+    // 2. Update the user with their display name and the new farm ID
+    batch.update(userDoc, {'displayName': displayName, 'farmId': farmDoc.id});
+
+    // Commit the batch
+    await batch.commit();
   }
 
   // Sign Out

@@ -16,6 +16,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   String? _errorMessage;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -153,30 +154,51 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
 
                     ElevatedButton(
-                      onPressed: () async {
-                        // First, run validation
-                        if (!_validateInputs()) {
-                          return; // Stop if validation fails
-                        }
-                        try {
-                          await ref
-                              .read(authRepositoryProvider)
-                              .signInWithEmail(
-                                email: _emailController.text.trim(),
-                                password: _passwordController.text.trim(),
-                              );
-                        } catch (e) {
-                          if (mounted) {
-                            setState(() {
-                              _errorMessage = e.toString().replaceFirst(
-                                'Exception: ',
-                                '',
-                              );
-                            });
-                          }
-                        }
-                      },
-                      child: const Text('Login'),
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              // First, run validation
+                              if (!_validateInputs()) {
+                                return; // Stop if validation fails
+                              }
+
+                              setState(() => _isLoading = true);
+
+                              try {
+                                await ref
+                                    .read(authRepositoryProvider)
+                                    .signInWithEmail(
+                                      email: _emailController.text.trim(),
+                                      password: _passwordController.text.trim(),
+                                    );
+                              } catch (e) {
+                                if (mounted) {
+                                  setState(() {
+                                    _errorMessage = e.toString().replaceFirst(
+                                      'Exception: ',
+                                      '',
+                                    );
+                                  });
+                                }
+                              } finally {
+                                // Ensure the loading indicator is turned off, even if there's an error
+                                if (mounted) {
+                                  setState(
+                                    () => _isLoading = false,
+                                  ); // <-- STOP loading
+                                }
+                              }
+                            },
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : const Text('Login'),
                     ),
                     const SizedBox(height: 24),
 

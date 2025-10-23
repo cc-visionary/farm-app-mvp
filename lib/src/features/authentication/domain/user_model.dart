@@ -4,8 +4,17 @@ class AppUser {
   final String uid;
   final String email;
   final String? displayName;
+  final String? farmId;
 
-  AppUser({required this.uid, required this.email, this.displayName});
+  AppUser({
+    required this.uid,
+    required this.email,
+    this.displayName,
+    this.farmId,
+  });
+
+  // Method to check if the user has finished the setup process
+  bool get hasCompletedSetup => farmId != null && farmId!.isNotEmpty;
 
   // Factory constructor to create a User from a Firestore document
   factory AppUser.fromMap(Map<String, dynamic> data) {
@@ -13,6 +22,7 @@ class AppUser {
       uid: data['uid'],
       email: data['email'],
       displayName: data['displayName'],
+      farmId: data['farmId'],
     );
   }
 
@@ -22,6 +32,7 @@ class AppUser {
       'uid': uid,
       'email': email,
       'displayName': displayName,
+      'farmId': farmId,
     };
   }
 }

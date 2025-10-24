@@ -15,6 +15,8 @@ import '../features/authentication/presentation/signup_screen.dart';
 import '../features/farms/presentation/setup_screen.dart';
 import '../features/farms/presentation/home_screen.dart';
 import '../features/animals/presentation/add_animal_screen.dart';
+import '../features/locations/domain/location_model.dart';
+import '../features/locations/presentation/add_edit_location_screen.dart';
 import '../features/settings/presentation/settings_screen.dart'; // Ensure this screen exists
 
 final goRouterProvider = Provider<GoRouter>((ref) {
@@ -91,6 +93,17 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/add-animal',
         builder: (context, state) => const AddAnimalScreen(),
+      ),
+      GoRoute(
+        path: '/add-location',
+        builder: (context, state) => const AddEditLocationScreen(),
+      ),
+      GoRoute(
+        path: '/edit-location',
+        builder: (context, state) {
+          final location = state.extra as Location;
+          return AddEditLocationScreen(location: location);
+        },
       ),
     ],
   );

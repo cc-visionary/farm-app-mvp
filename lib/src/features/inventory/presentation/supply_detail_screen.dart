@@ -15,6 +15,7 @@ import '../domain/supply.dart';
 import '../domain/supply_category.dart';
 import '../domain/supply_movement.dart';
 import 'add_edit_supply_screen.dart';
+import 'log_consumption_screen.dart';
 
 class SupplyDetailScreen extends ConsumerWidget {
   const SupplyDetailScreen({super.key, required this.supplyId});
@@ -66,6 +67,16 @@ class SupplyDetailScreen extends ConsumerWidget {
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Iconsax.arrow_up_3),
+        label: const Text('Log consumption'),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LogConsumptionScreen(initialSupplyId: supplyId),
+          ),
+        ),
       ),
     );
   }

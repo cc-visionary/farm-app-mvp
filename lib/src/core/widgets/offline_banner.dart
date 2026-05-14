@@ -1,6 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 
 import '../../features/media/media_providers.dart';
 
@@ -15,8 +16,9 @@ final connectivityProvider = StreamProvider<List<ConnectivityResult>>(
   (_) => Connectivity().onConnectivityChanged,
 );
 
-/// Slim orange banner that appears at the top of the app while the device is
-/// offline. When the connection comes back, any queued photo uploads are
+/// Slim warning banner that appears at the top of the app while the device is
+/// offline. Uses the theme tertiary token (E8A317 — "needs attention" warm
+/// amber). When the connection comes back, any queued photo uploads are
 /// flushed automatically.
 class OfflineBanner extends ConsumerWidget {
   const OfflineBanner({super.key});
@@ -47,22 +49,24 @@ class OfflineBanner extends ConsumerWidget {
 
     if (!isOffline) return const SizedBox.shrink();
 
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Material(
-      color: Colors.orange.shade700,
-      child: const SafeArea(
+      color: scheme.tertiary,
+      child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              Icon(Icons.cloud_off, color: Colors.white, size: 16),
-              SizedBox(width: 8),
+              Icon(Iconsax.cloud_cross, color: scheme.onTertiary, size: 16),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Offline — changes will sync when you reconnect',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                  style: textTheme.labelMedium?.copyWith(
+                    color: scheme.onTertiary,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),

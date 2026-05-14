@@ -17,6 +17,7 @@ import '../features/shifts/presentation/shifts_screen.dart';
 import '../features/tasks/presentation/tasks_screen.dart';
 import '../features/team/application/team_providers.dart';
 import '../features/team/presentation/team_management_screen.dart';
+import '../features/yield/yield_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateChangesProvider);
@@ -67,6 +68,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tasks', builder: (c, s) => const TasksScreen()),
       GoRoute(path: '/shifts', builder: (c, s) => const ShiftsScreen()),
       GoRoute(path: '/activity', builder: (c, s) => const ActivityScreen()),
+      GoRoute(path: '/yield', builder: (c, s) => const YieldScreen()),
       GoRoute(
         path: '/',
         builder: (c, s) => const Scaffold(

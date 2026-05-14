@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Farm App uses the camera to attach photos to pigs, equipment, and health records.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Farm App needs access to your photo library to attach existing photos to pigs, equipment, and health records.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Farm App may record audio when capturing video for equipment or health records.</string>
 </dict>
 </plist>

@@ -5,6 +5,7 @@ import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
 import '../application/pig_providers.dart';
 import '../domain/pig.dart';
+import 'add_edit_pig_screen.dart';
 import 'pig_detail_screen.dart';
 
 class PigsListScreen extends ConsumerStatefulWidget {
@@ -76,6 +77,14 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
             onPressed: () => setState(() => _showInactive = !_showInactive),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AddEditPigScreen()),
+        ),
+        tooltip: 'Add pig',
+        child: const Icon(Icons.add),
       ),
       body: Column(
         children: [

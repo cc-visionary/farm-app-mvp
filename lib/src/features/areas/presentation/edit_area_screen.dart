@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/area_providers.dart';
 import '../domain/area.dart';
@@ -28,7 +31,11 @@ class _S extends ConsumerState<EditAreaScreen> {
   }
 
   @override
-  void dispose() { _name.dispose(); _notes.dispose(); super.dispose(); }
+  void dispose() {
+    _name.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
 
   Future<void> _save() async {
     final farmId = ref.read(selectedFarmIdProvider);
@@ -44,14 +51,18 @@ class _S extends ConsumerState<EditAreaScreen> {
     try {
       if (_savedAreaId == null) {
         final id = await repo.createArea(
-          farmId: farmId, name: _name.text, purpose: _purpose,
+          farmId: farmId,
+          name: _name.text,
+          purpose: _purpose,
           notes: _notes.text.trim().isEmpty ? null : _notes.text,
         );
         setState(() => _savedAreaId = id);
       } else {
         await repo.updateArea(
-          farmId: farmId, areaId: _savedAreaId!,
-          name: _name.text, purpose: _purpose,
+          farmId: farmId,
+          areaId: _savedAreaId!,
+          name: _name.text,
+          purpose: _purpose,
           notes: _notes.text.trim().isEmpty ? null : _notes.text,
         );
       }
@@ -78,14 +89,29 @@ class _S extends ConsumerState<EditAreaScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtl, decoration: const InputDecoration(labelText: 'Pen name')),
-              TextField(controller: capCtl, decoration: const InputDecoration(labelText: 'Capacity (optional)'),
-                  keyboardType: TextInputType.number),
+              TextField(
+                controller: nameCtl,
+                decoration: const InputDecoration(labelText: 'Pen name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: capCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Capacity (optional)',
+                ),
+                keyboardType: TextInputType.number,
+              ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add'),
+            ),
           ],
         ),
       );
@@ -103,14 +129,19 @@ class _S extends ConsumerState<EditAreaScreen> {
         if (capCtl.text.trim().isNotEmpty && (cap == null || cap < 1)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Capacity must be a positive whole number.')),
+              const SnackBar(
+                content: Text('Capacity must be a positive whole number.'),
+              ),
             );
           }
           return;
         }
         await ref.read(areaRepositoryProvider).createPen(
-              farmId: farmId, areaId: _savedAreaId!,
-              name: name, capacity: cap, notes: null,
+              farmId: farmId,
+              areaId: _savedAreaId!,
+              name: name,
+              capacity: cap,
+              notes: null,
             );
       }
     } finally {
@@ -121,38 +152,64 @@ class _S extends ConsumerState<EditAreaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(_savedAreaId == null ? 'New area' : 'Edit area')),
+      appBar: AppBar(
+        title: Text(_savedAreaId == null ? 'New area' : 'Edit area'),
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-            const SizedBox(height: 16),
+            const SectionHeader(title: 'Name'),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(hintText: 'e.g. Gestation A'),
+            ),
+            const SectionHeader(title: 'Purpose'),
             DropdownButtonFormField<AreaPurpose>(
               initialValue: _purpose,
-              decoration: const InputDecoration(labelText: 'Purpose'),
-              items: AreaPurpose.values.map((p) =>
-                DropdownMenuItem(value: p, child: Text(p.label))).toList(),
-              onChanged: (v) => setState(() => _purpose = v ?? AreaPurpose.other),
+              decoration: const InputDecoration(),
+              items: AreaPurpose.values
+                  .map(
+                    (p) =>
+                        DropdownMenuItem(value: p, child: Text(p.label)),
+                  )
+                  .toList(),
+              onChanged: (v) =>
+                  setState(() => _purpose = v ?? AreaPurpose.other),
             ),
-            const SizedBox(height: 16),
-            TextField(controller: _notes,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                maxLines: 3),
+            const SectionHeader(title: 'Notes'),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(hintText: 'Optional'),
+              maxLines: 3,
+            ),
             const SizedBox(height: 24),
-            ElevatedButton(onPressed: _busy ? null : _save,
-                child: Text(_savedAreaId == null ? 'Save area' : 'Save changes')),
+            FilledButton(
+              onPressed: _busy ? null : _save,
+              child: _busy
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : Text(_savedAreaId == null ? 'Save area' : 'Save changes'),
+            ),
             if (_savedAreaId != null && farmId != null) ...[
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  const Text('Pens', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  IconButton(icon: const Icon(Icons.add), onPressed: _addPen),
-                ],
+              SectionHeader(
+                title: 'Pens',
+                trailing: IconButton(
+                  icon: const Icon(Iconsax.add),
+                  tooltip: 'Add pen',
+                  onPressed: _addPen,
+                ),
               ),
               _PenList(farmId: farmId, areaId: _savedAreaId!),
             ],
@@ -170,26 +227,81 @@ class _PenList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final pens = ref.watch(pensStreamProvider((farmId: farmId, areaId: areaId)));
     return pens.when(
-      data: (list) => Column(
-        children: list.map((p) => Card(
-          child: ListTile(
-            title: Text(p.name),
-            subtitle: Text(p.capacity == null
-                ? 'Capacity: —'
-                : 'Occupancy: ${p.currentOccupancy} / ${p.capacity}'),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => ref.read(areaRepositoryProvider).deletePen(
-                    farmId: farmId, areaId: areaId, penId: p.id,
-                  ),
+      data: (list) {
+        if (list.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No pens yet. Tap + to add one.',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
-          ),
-        )).toList(),
+          );
+        }
+        return Column(
+          children: list
+              .map(
+                (p) => Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    title: Text(p.name, style: textTheme.titleMedium),
+                    subtitle: Text(
+                      p.capacity == null
+                          ? 'Capacity: —'
+                          : 'Occupancy: ${p.currentOccupancy} / ${p.capacity}',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: Icon(
+                        Iconsax.trash,
+                        color: colorScheme.error,
+                      ),
+                      tooltip: 'Delete pen',
+                      onPressed: () async {
+                        final ok = await ConfirmDialog.show(
+                          context: context,
+                          title: 'Delete pen?',
+                          message:
+                              'Delete pen "${p.name}"? This cannot be undone.',
+                          confirmLabel: 'Delete',
+                          destructive: true,
+                        );
+                        if (ok) {
+                          await ref.read(areaRepositoryProvider).deletePen(
+                                farmId: farmId,
+                                areaId: areaId,
+                                penId: p.id,
+                              );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
+      loading: () => const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
       ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Text('Error: $e'),
+      error: (e, _) => Text(
+        'Error: $e',
+        style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
+      ),
     );
   }
 }

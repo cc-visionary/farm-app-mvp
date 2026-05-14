@@ -59,4 +59,33 @@ void main() {
     await repo.deleteArea(farmId: 'f1', areaId: aId);
     expect((await repo.streamAreas('f1').first), isEmpty);
   });
+
+  test('streamAllPens uses server-side farmId filter and returns pens for the right farm only', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = AreaRepository(f);
+    final a1 = await repo.createArea(
+      farmId: 'f1', name: 'A', purpose: AreaPurpose.farrowing, notes: null);
+    await repo.createPen(farmId: 'f1', areaId: a1, name: 'P1', capacity: 10, notes: null);
+    final a2 = await repo.createArea(
+      farmId: 'f2', name: 'B', purpose: AreaPurpose.nursery, notes: null);
+    await repo.createPen(farmId: 'f2', areaId: a2, name: 'P2', capacity: 5, notes: null);
+
+    final result = await repo.streamAllPens('f1').first;
+    expect(result, hasLength(1));
+    expect(result.first.name, 'P1');
+  });
+
+  test('incrementPenOccupancy uses FieldValue.increment atomically', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = AreaRepository(f);
+    final aId = await repo.createArea(
+      farmId: 'f1', name: 'A', purpose: AreaPurpose.growFinish, notes: null);
+    final pId = await repo.createPen(farmId: 'f1', areaId: aId, name: 'P', capacity: 10, notes: null);
+    await repo.incrementPenOccupancy(farmId: 'f1', areaId: aId, penId: pId, delta: 3);
+    final pen = (await repo.streamPens(farmId: 'f1', areaId: aId).first).first;
+    expect(pen.currentOccupancy, 3);
+    await repo.incrementPenOccupancy(farmId: 'f1', areaId: aId, penId: pId, delta: -1);
+    final pen2 = (await repo.streamPens(farmId: 'f1', areaId: aId).first).first;
+    expect(pen2.currentOccupancy, 2);
+  });
 }

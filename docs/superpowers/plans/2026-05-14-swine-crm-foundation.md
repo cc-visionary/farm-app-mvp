@@ -6541,4 +6541,1508 @@ git commit -m "feat(breeding,tasks): breeding cycle + automated task generation
 
 ---
 
-_(Tasks 9–17 continue. Each follows the same TDD + commit cadence; remaining tasks cover Farrowing & Litter Batches, Health Records, Mortality, Tasks UI, Shifts, Activity Feed, Yield Reports, Farm Layout, Dashboard + Offline + Photo Queue Flushing, and Firestore Security Rules.)_
+---
+
+## Task 9: Farrowing Log + Litter Batch
+
+**Goal:** When a sow farrows, log the litter (live, stillborn, mummified, avg birth weight). Optionally create a `batches/{id}` of type `litter` to track the piglets as a group. Closes the breeding record (`status: farrowed`) and marks the `farrowing_expected` task complete.
+
+**Files:**
+- Create:
+  - `lib/src/features/pigs/domain/farrowing_record.dart`
+  - `lib/src/features/pigs/domain/batch.dart`
+  - `lib/src/features/pigs/data/farrowing_repository.dart`
+  - `lib/src/features/pigs/data/batch_repository.dart`
+  - `lib/src/features/pigs/presentation/farrowing_log_screen.dart`
+  - `test/features/pigs/data/farrowing_repository_test.dart`
+- Modify:
+  - `lib/src/features/pigs/application/pig_providers.dart`
+  - `lib/src/features/pigs/presentation/pig_detail_screen.dart` (Breeding tab gets "Log farrowing" action)
+
+### Steps
+
+- [ ] **Step 9.1: FarrowingRecord + Batch models**
+
+`lib/src/features/pigs/domain/farrowing_record.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class FarrowingRecord {
+  final String id;
+  final String farmId;
+  final String sowId;
+  final String breedingRecordId;
+  final Timestamp date;
+  final int liveBorn;
+  final int stillborn;
+  final int mummified;
+  final double? avgBirthWeightKg;
+  final String? litterBatchId;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const FarrowingRecord({
+    required this.id, required this.farmId, required this.sowId,
+    required this.breedingRecordId, required this.date,
+    required this.liveBorn, required this.stillborn, required this.mummified,
+    required this.avgBirthWeightKg, required this.litterBatchId,
+    required this.notes, required this.createdBy, required this.createdAt,
+  });
+
+  factory FarrowingRecord.fromFirestore(
+    DocumentSnapshot doc, {required String farmId, required String sowId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return FarrowingRecord(
+      id: doc.id, farmId: farmId, sowId: sowId,
+      breedingRecordId: d['breedingRecordId'] as String,
+      date: d['date'] as Timestamp,
+      liveBorn: d['liveBorn'] as int? ?? 0,
+      stillborn: d['stillborn'] as int? ?? 0,
+      mummified: d['mummified'] as int? ?? 0,
+      avgBirthWeightKg: (d['avgBirthWeightKg'] as num?)?.toDouble(),
+      litterBatchId: d['litterBatchId'] as String?,
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'breedingRecordId': breedingRecordId,
+    'date': date,
+    'liveBorn': liveBorn, 'stillborn': stillborn, 'mummified': mummified,
+    if (avgBirthWeightKg != null) 'avgBirthWeightKg': avgBirthWeightKg,
+    if (litterBatchId != null) 'litterBatchId': litterBatchId,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy, 'createdAt': createdAt,
+  };
+}
+```
+
+`lib/src/features/pigs/domain/batch.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum BatchType {
+  litter('litter', 'Litter'),
+  growFinish('grow_finish', 'Grow-Finish'),
+  nursery('nursery', 'Nursery');
+  const BatchType(this.value, this.label);
+  final String value;
+  final String label;
+  static BatchType fromString(String s) =>
+      BatchType.values.firstWhere((b) => b.value == s, orElse: () => BatchType.growFinish);
+}
+
+enum BatchStatus {
+  active('active'), sold('sold'), closed('closed');
+  const BatchStatus(this.value);
+  final String value;
+  static BatchStatus fromString(String s) =>
+      BatchStatus.values.firstWhere((b) => b.value == s, orElse: () => BatchStatus.active);
+}
+
+class Batch {
+  final String id;
+  final String farmId;
+  final String name;
+  final BatchType type;
+  final List<String> originPigIds;
+  final List<String> pigIds;
+  final int count;
+  final String currentAreaId;
+  final String? currentPenId;
+  final BatchStatus status;
+  final Timestamp startDate;
+  final Timestamp? endDate;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const Batch({
+    required this.id, required this.farmId, required this.name, required this.type,
+    required this.originPigIds, required this.pigIds, required this.count,
+    required this.currentAreaId, required this.currentPenId,
+    required this.status, required this.startDate, required this.endDate,
+    required this.createdBy, required this.createdAt,
+  });
+
+  factory Batch.fromFirestore(DocumentSnapshot doc, {required String farmId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return Batch(
+      id: doc.id, farmId: farmId,
+      name: d['name'] as String,
+      type: BatchType.fromString(d['type'] as String),
+      originPigIds: List<String>.from(d['originPigIds'] ?? const []),
+      pigIds: List<String>.from(d['pigIds'] ?? const []),
+      count: d['count'] as int? ?? 0,
+      currentAreaId: d['currentAreaId'] as String,
+      currentPenId: d['currentPenId'] as String?,
+      status: BatchStatus.fromString(d['status'] as String? ?? 'active'),
+      startDate: d['startDate'] as Timestamp,
+      endDate: d['endDate'] as Timestamp?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'name': name, 'type': type.value,
+    'originPigIds': originPigIds, 'pigIds': pigIds, 'count': count,
+    'currentAreaId': currentAreaId,
+    if (currentPenId != null) 'currentPenId': currentPenId,
+    'status': status.value, 'startDate': startDate,
+    if (endDate != null) 'endDate': endDate,
+    'createdBy': createdBy, 'createdAt': createdAt,
+  };
+}
+```
+
+- [ ] **Step 9.2: Test — FarrowingRepository**
+
+`test/features/pigs/data/farrowing_repository_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/activity/data/activity_repository.dart';
+import 'package:farm_app/src/features/pigs/data/batch_repository.dart';
+import 'package:farm_app/src/features/pigs/data/farrowing_repository.dart';
+
+void main() {
+  test('logFarrowing writes record, closes breeding, completes task', () async {
+    final f = FakeFirebaseFirestore();
+    await f.collection('farms').doc('f1').collection('pigs').doc('sow1')
+      .collection('breeding_records').doc('br1').set({
+        'boarId': 'b1', 'inseminationDate': Timestamp.now(),
+        'method': 'natural', 'confirmed': true,
+        'expectedFarrowingDate': Timestamp.now(),
+        'status': 'confirmed', 'createdBy': 'u', 'createdAt': Timestamp.now(),
+      });
+    await f.collection('farms').doc('f1').collection('tasks').doc('br_br1_farr')
+      .set({'type': 'farrowing_expected', 'title': 'x', 'dueDate': Timestamp.now(),
+            'status': 'open', 'autoGenerated': true, 'createdAt': Timestamp.now()});
+
+    final repo = FarrowingRepository(f, ActivityRepository(f), BatchRepository(f, ActivityRepository(f)));
+    final id = await repo.logFarrowing(
+      farmId: 'f1', sowId: 'sow1', sowTagId: 'SOW-1', sowAreaId: 'a1', sowPenId: null,
+      breedingRecordId: 'br1', date: Timestamp.now(),
+      liveBorn: 10, stillborn: 1, mummified: 0,
+      avgBirthWeightKg: 1.4, createLitterBatch: true, notes: null,
+      actorUserId: 'u1', actorDisplayName: 'Juan',
+    );
+
+    final farr = await f.collection('farms').doc('f1').collection('pigs').doc('sow1')
+        .collection('farrowing_records').doc(id).get();
+    expect(farr.data()!['liveBorn'], 10);
+    expect(farr.data()!['litterBatchId'], isNotNull);
+
+    final br = await f.collection('farms').doc('f1').collection('pigs').doc('sow1')
+        .collection('breeding_records').doc('br1').get();
+    expect(br.data()!['status'], 'farrowed');
+
+    final task = await f.collection('farms').doc('f1').collection('tasks')
+        .doc('br_br1_farr').get();
+    expect(task.data()!['status'], 'completed');
+
+    final batches = await f.collection('farms').doc('f1').collection('batches').get();
+    expect(batches.docs, hasLength(1));
+    expect(batches.docs.first.data()['type'], 'litter');
+    expect(batches.docs.first.data()['count'], 10);
+  });
+}
+```
+
+- [ ] **Step 9.3: BatchRepository + FarrowingRepository**
+
+`lib/src/features/pigs/data/batch_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/batch.dart';
+
+class BatchRepository {
+  BatchRepository(this._firestore, this._activity);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('batches');
+
+  /// Adds a batch create to an existing batch (used during farrowing).
+  /// Returns the new batch doc ID via the caller capturing ref.id.
+  String addBatchCreateToBatch({
+    required WriteBatch batch,
+    required String farmId,
+    required String name,
+    required BatchType type,
+    required List<String> originPigIds,
+    required int count,
+    required String currentAreaId,
+    String? currentPenId,
+    required String createdBy,
+  }) {
+    final ref = _col(farmId).doc();
+    batch.set(ref, {
+      'name': name, 'type': type.value,
+      'originPigIds': originPigIds, 'pigIds': <String>[], 'count': count,
+      'currentAreaId': currentAreaId,
+      if (currentPenId != null) 'currentPenId': currentPenId,
+      'status': 'active', 'startDate': FieldValue.serverTimestamp(),
+      'createdBy': createdBy, 'createdAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  Stream<List<Batch>> streamBatches(String farmId) {
+    return _col(farmId).snapshots().map((s) =>
+        s.docs.map((d) => Batch.fromFirestore(d, farmId: farmId)).toList());
+  }
+}
+```
+
+`lib/src/features/pigs/data/farrowing_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/batch.dart';
+import '../domain/farrowing_record.dart';
+import 'batch_repository.dart';
+
+class FarrowingRepository {
+  FarrowingRepository(this._firestore, this._activity, this._batches);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+  final BatchRepository _batches;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId, String sowId) =>
+      _firestore.collection('farms').doc(farmId)
+          .collection('pigs').doc(sowId)
+          .collection('farrowing_records');
+
+  Future<String> logFarrowing({
+    required String farmId,
+    required String sowId, required String sowTagId,
+    required String sowAreaId, required String? sowPenId,
+    required String breedingRecordId,
+    required Timestamp date,
+    required int liveBorn, required int stillborn, required int mummified,
+    required double? avgBirthWeightKg,
+    required bool createLitterBatch, required String? notes,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final farrRef = _col(farmId, sowId).doc();
+    final batch = _firestore.batch();
+    String? litterBatchId;
+    if (createLitterBatch && liveBorn > 0) {
+      litterBatchId = _batches.addBatchCreateToBatch(
+        batch: batch, farmId: farmId,
+        name: 'Litter ${date.toDate().toIso8601String().split('T')[0]} · $sowTagId',
+        type: BatchType.litter,
+        originPigIds: [sowId], count: liveBorn,
+        currentAreaId: sowAreaId, currentPenId: sowPenId,
+        createdBy: actorUserId,
+      );
+    }
+    batch.set(farrRef, {
+      'breedingRecordId': breedingRecordId, 'date': date,
+      'liveBorn': liveBorn, 'stillborn': stillborn, 'mummified': mummified,
+      if (avgBirthWeightKg != null) 'avgBirthWeightKg': avgBirthWeightKg,
+      if (litterBatchId != null) 'litterBatchId': litterBatchId,
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId, 'createdAt': FieldValue.serverTimestamp(),
+    });
+    // Close the breeding record.
+    batch.update(
+      _firestore.collection('farms').doc(farmId).collection('pigs').doc(sowId)
+        .collection('breeding_records').doc(breedingRecordId),
+      {'status': 'farrowed'});
+    // Mark farrowing_expected task complete.
+    batch.update(
+      _firestore.collection('farms').doc(farmId).collection('tasks')
+        .doc('br_${breedingRecordId}_farr'),
+      {'status': 'completed', 'completedBy': actorUserId,
+       'completedAt': FieldValue.serverTimestamp()});
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'farrowing_logged', entityType: 'pig', entityId: sowId,
+      areaId: sowAreaId,
+      summary: '$actorDisplayName logged farrowing on $sowTagId — '
+          '$liveBorn live, $stillborn stillborn',
+    );
+    await batch.commit();
+    return farrRef.id;
+  }
+
+  Stream<List<FarrowingRecord>> streamFarrowings({
+    required String farmId, required String sowId,
+  }) {
+    return _col(farmId, sowId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) =>
+            FarrowingRecord.fromFirestore(d, farmId: farmId, sowId: sowId)).toList());
+  }
+
+  /// Collection-group across all sows for a farm — used by Yield Reports.
+  Stream<List<FarrowingRecord>> streamAllFarrowings(String farmId) {
+    return _firestore.collectionGroup('farrowing_records').snapshots().map((s) {
+      return s.docs.where((d) {
+        final parts = d.reference.path.split('/');
+        return parts[0] == 'farms' && parts[1] == farmId;
+      }).map((d) {
+        final sowId = d.reference.parent.parent!.id;
+        return FarrowingRecord.fromFirestore(d, farmId: farmId, sowId: sowId);
+      }).toList();
+    });
+  }
+}
+```
+
+- [ ] **Step 9.4: Providers + farrowing screen**
+
+Add to `pig_providers.dart`:
+
+```dart
+import '../data/farrowing_repository.dart';
+import '../data/batch_repository.dart';
+import '../domain/farrowing_record.dart';
+import '../domain/batch.dart';
+
+final batchRepositoryProvider = Provider<BatchRepository>(
+  (ref) => BatchRepository(ref.watch(firestoreProvider), ref.watch(activityRepositoryProvider)));
+
+final farrowingRepositoryProvider = Provider<FarrowingRepository>(
+  (ref) => FarrowingRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+    ref.watch(batchRepositoryProvider),
+  ));
+
+final farrowingsForSowProvider =
+    StreamProvider.family<List<FarrowingRecord>, ({String farmId, String sowId})>((ref, args) {
+  return ref.watch(farrowingRepositoryProvider).streamFarrowings(
+        farmId: args.farmId, sowId: args.sowId);
+});
+
+final allFarrowingsProvider =
+    StreamProvider.family<List<FarrowingRecord>, String>((ref, farmId) {
+  return ref.watch(farrowingRepositoryProvider).streamAllFarrowings(farmId);
+});
+
+final batchesStreamProvider =
+    StreamProvider.family<List<Batch>, String>((ref, farmId) {
+  return ref.watch(batchRepositoryProvider).streamBatches(farmId);
+});
+```
+
+`lib/src/features/pigs/presentation/farrowing_log_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/pig_providers.dart';
+import '../domain/breeding_record.dart';
+import '../domain/pig.dart';
+
+class FarrowingLogScreen extends ConsumerStatefulWidget {
+  const FarrowingLogScreen({super.key, required this.sow, required this.breedingRecord});
+  final Pig sow;
+  final BreedingRecord breedingRecord;
+  @override
+  ConsumerState<FarrowingLogScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<FarrowingLogScreen> {
+  DateTime _date = DateTime.now();
+  final _live = TextEditingController();
+  final _still = TextEditingController(text: '0');
+  final _mumm = TextEditingController(text: '0');
+  final _weight = TextEditingController();
+  final _notes = TextEditingController();
+  bool _createBatch = true;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _live.dispose(); _still.dispose(); _mumm.dispose();
+    _weight.dispose(); _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    final live = int.tryParse(_live.text);
+    if (live == null || live < 0) { setState(() => _error = 'Live born required.'); return; }
+    setState(() { _busy = true; _error = null; });
+    final name = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    try {
+      await ref.read(farrowingRepositoryProvider).logFarrowing(
+        farmId: farmId, sowId: widget.sow.id, sowTagId: widget.sow.tagId,
+        sowAreaId: widget.sow.currentAreaId, sowPenId: widget.sow.currentPenId,
+        breedingRecordId: widget.breedingRecord.id,
+        date: Timestamp.fromDate(_date),
+        liveBorn: live,
+        stillborn: int.tryParse(_still.text) ?? 0,
+        mummified: int.tryParse(_mumm.text) ?? 0,
+        avgBirthWeightKg: double.tryParse(_weight.text),
+        createLitterBatch: _createBatch,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid, actorDisplayName: name,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Farrowing · ${widget.sow.tagId}')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Farrowing date'),
+              subtitle: Text(_date.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context,
+                  initialDate: _date,
+                  firstDate: DateTime(2024), lastDate: DateTime.now());
+                if (p != null) setState(() => _date = p);
+              },
+            ),
+            const SizedBox(height: 8),
+            TextField(controller: _live,
+              decoration: const InputDecoration(labelText: 'Live born'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _still,
+              decoration: const InputDecoration(labelText: 'Stillborn'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _mumm,
+              decoration: const InputDecoration(labelText: 'Mummified'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _weight,
+              decoration: const InputDecoration(labelText: 'Avg birth weight (kg, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Create litter batch'),
+              subtitle: const Text('Tracks the piglets as a group'),
+              value: _createBatch,
+              onChanged: (v) => setState(() => _createBatch = v),
+            ),
+            const SizedBox(height: 8),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'), maxLines: 3),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save farrowing')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 9.5: Wire from Breeding tab**
+
+In `pig_detail_screen.dart` `_BreedingTab`, replace the existing `trailing` IconButton on planned/confirmed records to include a "farrow" button when status is `confirmed`:
+
+```dart
+trailing: r.status == BreedingStatus.planned
+    ? IconButton(icon: const Icon(Icons.fact_check), onPressed: () { /* preg check, as before */ })
+    : r.status == BreedingStatus.confirmed
+        ? IconButton(
+            icon: const Icon(Icons.child_friendly),
+            tooltip: 'Log farrowing',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => FarrowingLogScreen(sow: pig, breedingRecord: r))),
+          )
+        : null,
+```
+
+Import: `import 'farrowing_log_screen.dart';`
+
+- [ ] **Step 9.6: Run + commit**
+
+```bash
+flutter analyze && flutter test && flutter run -d <device>
+```
+
+Manual: take a sow with a confirmed breeding → tap child icon → log farrowing (10 live, 1 stillborn, create litter ON). Verify: farrowing record created, breeding `status: farrowed`, `farrowing_expected` task completed, a new `batches/{id}` with `type: litter`, `count: 10`.
+
+```bash
+git add -A
+git commit -m "feat(farrowing,batches): farrowing log with optional litter batch creation
+
+- FarrowingRecord + Batch models
+- FarrowingRepository: writes farrowing, optionally creates litter batch,
+  closes breeding record, completes farrowing_expected task — all atomic
+- BatchRepository with addBatchCreateToBatch helper for inline batch creation
+- Farrowing log screen accessible from confirmed breeding records"
+```
+
+---
+
+## Task 10: Health Log + Photos + Withdrawal Task
+
+**Goal:** Health record CRUD (vaccination, treatment, checkup, deworming) with multi-photo support. Withdrawal-end task auto-generated when `withdrawalEndDate` is set. Vet role can write here.
+
+**Files:**
+- Create:
+  - `lib/src/features/pigs/domain/health_record.dart`
+  - `lib/src/features/pigs/data/health_repository.dart`
+  - `lib/src/features/pigs/presentation/health_log_screen.dart`
+  - `test/features/pigs/data/health_repository_test.dart`
+- Modify:
+  - `lib/src/features/pigs/application/pig_providers.dart`
+  - `lib/src/features/pigs/presentation/pig_detail_screen.dart` (Health tab)
+
+### Steps
+
+- [ ] **Step 10.1: HealthRecord model**
+
+`lib/src/features/pigs/domain/health_record.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum HealthEventType {
+  vaccination('vaccination', 'Vaccination'),
+  treatment('treatment', 'Treatment'),
+  checkup('checkup', 'Checkup'),
+  deworming('deworming', 'Deworming');
+  const HealthEventType(this.value, this.label);
+  final String value;
+  final String label;
+  static HealthEventType fromString(String s) =>
+      HealthEventType.values.firstWhere((e) => e.value == s, orElse: () => HealthEventType.checkup);
+}
+
+enum HealthRoute {
+  oral('oral', 'Oral'),
+  im('im', 'IM (intramuscular)'),
+  sc('sc', 'SC (subcutaneous)'),
+  topical('topical', 'Topical');
+  const HealthRoute(this.value, this.label);
+  final String value;
+  final String label;
+  static HealthRoute fromString(String s) =>
+      HealthRoute.values.firstWhere((r) => r.value == s, orElse: () => HealthRoute.oral);
+}
+
+class HealthRecord {
+  final String id;
+  final String farmId;
+  final String pigId;
+  final HealthEventType type;
+  final Timestamp date;
+  final String? productName;
+  final String? dosage;
+  final HealthRoute? route;
+  final String? diagnosis;
+  final Timestamp? withdrawalEndDate;
+  final double? costPhp;
+  final List<String> photoUrls;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const HealthRecord({
+    required this.id, required this.farmId, required this.pigId,
+    required this.type, required this.date, required this.productName,
+    required this.dosage, required this.route, required this.diagnosis,
+    required this.withdrawalEndDate, required this.costPhp,
+    required this.photoUrls, required this.notes,
+    required this.createdBy, required this.createdAt,
+  });
+
+  factory HealthRecord.fromFirestore(
+    DocumentSnapshot doc, {required String farmId, required String pigId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return HealthRecord(
+      id: doc.id, farmId: farmId, pigId: pigId,
+      type: HealthEventType.fromString(d['type'] as String),
+      date: d['date'] as Timestamp,
+      productName: d['productName'] as String?,
+      dosage: d['dosage'] as String?,
+      route: d['route'] != null ? HealthRoute.fromString(d['route'] as String) : null,
+      diagnosis: d['diagnosis'] as String?,
+      withdrawalEndDate: d['withdrawalEndDate'] as Timestamp?,
+      costPhp: (d['costPhp'] as num?)?.toDouble(),
+      photoUrls: List<String>.from(d['photoUrls'] ?? const []),
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'type': type.value, 'date': date,
+    if (productName != null) 'productName': productName,
+    if (dosage != null) 'dosage': dosage,
+    if (route != null) 'route': route!.value,
+    if (diagnosis != null) 'diagnosis': diagnosis,
+    if (withdrawalEndDate != null) 'withdrawalEndDate': withdrawalEndDate,
+    if (costPhp != null) 'costPhp': costPhp,
+    'photoUrls': photoUrls,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy, 'createdAt': createdAt,
+  };
+}
+```
+
+- [ ] **Step 10.2: HealthRepository**
+
+`lib/src/features/pigs/data/health_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../../tasks/application/task_generator.dart';
+import '../domain/health_record.dart';
+
+class HealthRepository {
+  HealthRepository(this._firestore, this._activity, this._gen);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+  final TaskGenerator _gen;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId, String pigId) =>
+      _firestore.collection('farms').doc(farmId)
+          .collection('pigs').doc(pigId)
+          .collection('health_records');
+
+  Future<String> logHealth({
+    required String farmId,
+    required String pigId, required String tagId, required String areaId,
+    required HealthEventType type, required Timestamp date,
+    required String? productName, required String? dosage,
+    required HealthRoute? route, required String? diagnosis,
+    required Timestamp? withdrawalEndDate, required double? costPhp,
+    required List<String> photoUrls, required String? notes,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final ref = _col(farmId, pigId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'type': type.value, 'date': date,
+      if (productName != null) 'productName': productName,
+      if (dosage != null) 'dosage': dosage,
+      if (route != null) 'route': route.value,
+      if (diagnosis != null) 'diagnosis': diagnosis,
+      if (withdrawalEndDate != null) 'withdrawalEndDate': withdrawalEndDate,
+      if (costPhp != null) 'costPhp': costPhp,
+      'photoUrls': photoUrls,
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    if (withdrawalEndDate != null) {
+      _gen.addWithdrawalTaskToBatch(
+        batch: batch, farmId: farmId, healthRecordId: ref.id,
+        pigId: pigId, tagId: tagId, areaId: areaId,
+        withdrawalEndDate: withdrawalEndDate,
+      );
+    }
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'health_logged', entityType: 'pig', entityId: pigId,
+      areaId: areaId,
+      summary: '$actorDisplayName logged ${type.label} on $tagId'
+          '${productName == null ? "" : " ($productName)"}',
+    );
+    await batch.commit();
+    return ref.id;
+  }
+
+  Stream<List<HealthRecord>> streamHealthForPig({
+    required String farmId, required String pigId,
+  }) {
+    return _col(farmId, pigId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) =>
+            HealthRecord.fromFirestore(d, farmId: farmId, pigId: pigId)).toList());
+  }
+}
+```
+
+Repository test (`test/features/pigs/data/health_repository_test.dart`):
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/activity/data/activity_repository.dart';
+import 'package:farm_app/src/features/pigs/data/health_repository.dart';
+import 'package:farm_app/src/features/pigs/domain/health_record.dart';
+import 'package:farm_app/src/features/tasks/application/task_generator.dart';
+import 'package:farm_app/src/features/tasks/data/task_repository.dart';
+
+void main() {
+  test('logHealth with withdrawalEndDate generates withdrawal_end task', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = HealthRepository(
+      f, ActivityRepository(f), TaskGenerator(f, TaskRepository(f)));
+    final end = Timestamp.fromMillisecondsSinceEpoch(1800000000000);
+    final id = await repo.logHealth(
+      farmId: 'f1', pigId: 'p1', tagId: 'PIG-1', areaId: 'a1',
+      type: HealthEventType.vaccination, date: Timestamp.now(),
+      productName: 'PRRS Vax', dosage: '2ml', route: HealthRoute.im,
+      diagnosis: null, withdrawalEndDate: end, costPhp: 150,
+      photoUrls: const [], notes: null,
+      actorUserId: 'u', actorDisplayName: 'Juan',
+    );
+    expect(id, isNotEmpty);
+    final tasks = await f.collection('farms').doc('f1').collection('tasks').get();
+    expect(tasks.docs.where((d) => d.data()['type'] == 'withdrawal_end'), hasLength(1));
+  });
+
+  test('logHealth without withdrawal date does not create task', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = HealthRepository(
+      f, ActivityRepository(f), TaskGenerator(f, TaskRepository(f)));
+    await repo.logHealth(
+      farmId: 'f1', pigId: 'p1', tagId: 'X', areaId: 'a',
+      type: HealthEventType.checkup, date: Timestamp.now(),
+      productName: null, dosage: null, route: null, diagnosis: null,
+      withdrawalEndDate: null, costPhp: null,
+      photoUrls: const [], notes: null,
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    final tasks = await f.collection('farms').doc('f1').collection('tasks').get();
+    expect(tasks.docs, isEmpty);
+  });
+}
+```
+
+- [ ] **Step 10.3: Providers**
+
+Add to `pig_providers.dart`:
+
+```dart
+import '../data/health_repository.dart';
+import '../domain/health_record.dart';
+
+final healthRepositoryProvider = Provider<HealthRepository>(
+  (ref) => HealthRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+    ref.watch(taskGeneratorProvider),
+  ));
+
+final healthForPigProvider =
+    StreamProvider.family<List<HealthRecord>, ({String farmId, String pigId})>((ref, args) {
+  return ref.watch(healthRepositoryProvider).streamHealthForPig(
+        farmId: args.farmId, pigId: args.pigId);
+});
+```
+
+- [ ] **Step 10.4: Health log screen (with photos)**
+
+`lib/src/features/pigs/presentation/health_log_screen.dart`:
+
+```dart
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../media/media_providers.dart';
+import '../../media/photo_picker.dart';
+import '../application/pig_providers.dart';
+import '../domain/health_record.dart';
+import '../domain/pig.dart';
+
+class HealthLogScreen extends ConsumerStatefulWidget {
+  const HealthLogScreen({super.key, required this.pig});
+  final Pig pig;
+  @override
+  ConsumerState<HealthLogScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<HealthLogScreen> {
+  HealthEventType _type = HealthEventType.vaccination;
+  DateTime _date = DateTime.now();
+  final _product = TextEditingController();
+  final _dosage = TextEditingController();
+  HealthRoute? _route;
+  final _diagnosis = TextEditingController();
+  final _withdrawalDays = TextEditingController();
+  final _cost = TextEditingController();
+  final _notes = TextEditingController();
+  final List<File> _photos = [];
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in [_product, _dosage, _diagnosis, _withdrawalDays, _cost, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _addPhoto() async {
+    final f = await PhotoPicker.pick(context);
+    if (f != null) setState(() => _photos.add(f));
+  }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    setState(() { _busy = true; _error = null; });
+    final name = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    final storage = ref.read(firebaseStorageProvider);
+    final photoUrls = <String>[];
+    try {
+      // Upload photos sequentially before record write so URLs are in the doc.
+      for (var i = 0; i < _photos.length; i++) {
+        final storagePath = 'farms/$farmId/health/${widget.pig.id}/'
+            '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final task = await storage.ref(storagePath).putFile(_photos[i]);
+        photoUrls.add(await task.ref.getDownloadURL());
+      }
+      Timestamp? wEnd;
+      final wDays = int.tryParse(_withdrawalDays.text);
+      if (wDays != null && wDays > 0) {
+        wEnd = Timestamp.fromDate(_date.add(Duration(days: wDays)));
+      }
+      await ref.read(healthRepositoryProvider).logHealth(
+        farmId: farmId, pigId: widget.pig.id, tagId: widget.pig.tagId,
+        areaId: widget.pig.currentAreaId,
+        type: _type, date: Timestamp.fromDate(_date),
+        productName: _product.text.trim().isEmpty ? null : _product.text.trim(),
+        dosage: _dosage.text.trim().isEmpty ? null : _dosage.text.trim(),
+        route: _route,
+        diagnosis: _diagnosis.text.trim().isEmpty ? null : _diagnosis.text.trim(),
+        withdrawalEndDate: wEnd,
+        costPhp: double.tryParse(_cost.text),
+        photoUrls: photoUrls,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid, actorDisplayName: name,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Log health · ${widget.pig.tagId}')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<HealthEventType>(
+              segments: HealthEventType.values.map((t) =>
+                ButtonSegment(value: t, label: Text(t.label))).toList(),
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Date'),
+              subtitle: Text(_date.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context, initialDate: _date,
+                    firstDate: DateTime(2024), lastDate: DateTime.now());
+                if (p != null) setState(() => _date = p);
+              },
+            ),
+            TextField(controller: _product, decoration: const InputDecoration(labelText: 'Product (e.g., PRRS vaccine)')),
+            const SizedBox(height: 8),
+            TextField(controller: _dosage, decoration: const InputDecoration(labelText: 'Dosage')),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<HealthRoute?>(
+              value: _route,
+              decoration: const InputDecoration(labelText: 'Route'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('—')),
+                ...HealthRoute.values.map((r) =>
+                  DropdownMenuItem(value: r, child: Text(r.label))),
+              ],
+              onChanged: (v) => setState(() => _route = v),
+            ),
+            if (_type == HealthEventType.treatment || _type == HealthEventType.checkup) ...[
+              const SizedBox(height: 8),
+              TextField(controller: _diagnosis,
+                decoration: const InputDecoration(labelText: 'Diagnosis')),
+            ],
+            const SizedBox(height: 8),
+            TextField(controller: _withdrawalDays,
+              decoration: const InputDecoration(labelText: 'Withdrawal period (days, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _cost,
+              decoration: const InputDecoration(labelText: 'Cost (PHP, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
+            const Text('Photos', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 80,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  ..._photos.map((f) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(f, width: 80, height: 80, fit: BoxFit.cover),
+                    ),
+                  )),
+                  GestureDetector(
+                    onTap: _addPhoto,
+                    child: Container(
+                      width: 80, height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.add_a_photo),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save health record')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 10.5: Health tab in Pig Detail**
+
+In `pig_detail_screen.dart`, replace `_PlaceholderTab(text: 'Health records...')` with `_HealthTab(pig: pig)`:
+
+```dart
+class _HealthTab extends ConsumerWidget {
+  const _HealthTab({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recordsAsync = ref.watch(healthForPigProvider(
+        (farmId: pig.farmId, pigId: pig.id)));
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.medical_services),
+        label: const Text('Log health'),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => HealthLogScreen(pig: pig))),
+      ),
+      body: recordsAsync.when(
+        data: (records) {
+          if (records.isEmpty) return const Center(child: Text('No health records yet.'));
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: records.map((r) => Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Chip(label: Text(r.type.label)),
+                        const Spacer(),
+                        Text(r.date.toDate().toString().split(' ')[0],
+                            style: const TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                    if (r.productName != null) Text('Product: ${r.productName}'),
+                    if (r.dosage != null) Text('Dosage: ${r.dosage}'),
+                    if (r.diagnosis != null) Text('Diagnosis: ${r.diagnosis}'),
+                    if (r.withdrawalEndDate != null)
+                      Text('Withdrawal until: ${r.withdrawalEndDate!.toDate().toString().split(' ')[0]}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                    if (r.photoUrls.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: r.photoUrls.map((url) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover),
+                            ),
+                          )).toList(),
+                        ),
+                      ),
+                    ],
+                    if (r.notes != null) ...[
+                      const SizedBox(height: 4),
+                      Text(r.notes!),
+                    ],
+                  ],
+                ),
+              ),
+            )).toList(),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+}
+```
+
+Imports at top of file: `import 'health_log_screen.dart';` and (already added) the health record provider.
+
+- [ ] **Step 10.6: Run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+
+Manual: log a vaccination with withdrawal period 21 days → verify a `withdrawal_end` task is created at +21 days from the health record date. Add 2 photos via camera; confirm they appear on the health card.
+
+```bash
+git add -A
+git commit -m "feat(health): per-pig health records with photos and withdrawal tasks
+
+- HealthRecord model with vaccination/treatment/checkup/deworming types
+- HealthRepository: atomic record + withdrawal_end task + activity entry
+- Health log screen with multi-photo capture, route, withdrawal period
+- Health tab on Pig Detail renders chronological history with photos"
+```
+
+---
+
+## Task 11: Mortality Log
+
+**Goal:** Log animal mortality with optional photos. Sets pig `status: deceased`. Single mortality record per pig (the cause-of-death event).
+
+**Files:**
+- Create:
+  - `lib/src/features/pigs/domain/mortality_record.dart`
+  - `lib/src/features/pigs/data/mortality_repository.dart`
+  - `lib/src/features/pigs/presentation/mortality_log_screen.dart`
+  - `test/features/pigs/data/mortality_repository_test.dart`
+- Modify:
+  - `lib/src/features/pigs/application/pig_providers.dart`
+  - `lib/src/features/pigs/presentation/pig_detail_screen.dart` (Profile tab gets "Mark deceased" action)
+
+### Steps
+
+- [ ] **Step 11.1: MortalityRecord model + repository**
+
+`lib/src/features/pigs/domain/mortality_record.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class MortalityRecord {
+  final String id;
+  final String farmId;
+  final String pigId;
+  final Timestamp date;
+  final String? cause;
+  final List<String> photoUrls;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const MortalityRecord({
+    required this.id, required this.farmId, required this.pigId,
+    required this.date, required this.cause,
+    required this.photoUrls, required this.notes,
+    required this.createdBy, required this.createdAt,
+  });
+
+  factory MortalityRecord.fromFirestore(
+    DocumentSnapshot doc, {required String farmId, required String pigId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return MortalityRecord(
+      id: doc.id, farmId: farmId, pigId: pigId,
+      date: d['date'] as Timestamp,
+      cause: d['cause'] as String?,
+      photoUrls: List<String>.from(d['photoUrls'] ?? const []),
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'date': date,
+    if (cause != null) 'cause': cause,
+    'photoUrls': photoUrls,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy, 'createdAt': createdAt,
+  };
+}
+```
+
+`lib/src/features/pigs/data/mortality_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/mortality_record.dart';
+
+class MortalityRepository {
+  MortalityRepository(this._firestore, this._activity);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+
+  DocumentReference<Map<String, dynamic>> _doc(String farmId, String pigId) =>
+      _firestore.collection('farms').doc(farmId)
+          .collection('pigs').doc(pigId)
+          .collection('mortality_record').doc('primary');
+
+  Future<void> logMortality({
+    required String farmId,
+    required String pigId, required String tagId, required String areaId,
+    required Timestamp date, required String? cause,
+    required List<String> photoUrls, required String? notes,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.set(_doc(farmId, pigId), {
+      'date': date,
+      if (cause != null) 'cause': cause,
+      'photoUrls': photoUrls,
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    batch.update(
+      _firestore.collection('farms').doc(farmId).collection('pigs').doc(pigId),
+      {'status': 'deceased', 'updatedAt': FieldValue.serverTimestamp()},
+    );
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'mortality_logged', entityType: 'pig', entityId: pigId,
+      areaId: areaId,
+      summary: '$actorDisplayName logged mortality of $tagId'
+          '${cause == null ? "" : " (cause: $cause)"}',
+    );
+    await batch.commit();
+  }
+
+  Stream<MortalityRecord?> streamMortality({required String farmId, required String pigId}) {
+    return _doc(farmId, pigId).snapshots().map(
+      (d) => d.exists ? MortalityRecord.fromFirestore(d, farmId: farmId, pigId: pigId) : null,
+    );
+  }
+
+  /// All mortalities across a farm — for yield reports.
+  Stream<List<MortalityRecord>> streamAllMortalities(String farmId) {
+    return _firestore.collectionGroup('mortality_record').snapshots().map((s) {
+      return s.docs.where((d) {
+        final parts = d.reference.path.split('/');
+        return parts[0] == 'farms' && parts[1] == farmId;
+      }).map((d) {
+        final pigId = d.reference.parent.parent!.id;
+        return MortalityRecord.fromFirestore(d, farmId: farmId, pigId: pigId);
+      }).toList();
+    });
+  }
+}
+```
+
+Test (`test/features/pigs/data/mortality_repository_test.dart`):
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/activity/data/activity_repository.dart';
+import 'package:farm_app/src/features/pigs/data/mortality_repository.dart';
+
+void main() {
+  test('logMortality sets pig deceased and writes activity', () async {
+    final f = FakeFirebaseFirestore();
+    await f.collection('farms').doc('f1').collection('pigs').doc('p1').set({
+      'tagId': 'P', 'sex': 'female', 'breed': 'X',
+      'birthDate': Timestamp.now(), 'stage': 'sow', 'status': 'active',
+      'currentAreaId': 'a1', 'createdBy': 'u',
+      'createdAt': Timestamp.now(), 'updatedAt': Timestamp.now(),
+    });
+    final repo = MortalityRepository(f, ActivityRepository(f));
+    await repo.logMortality(
+      farmId: 'f1', pigId: 'p1', tagId: 'P', areaId: 'a1',
+      date: Timestamp.now(), cause: 'respiratory',
+      photoUrls: const [], notes: null,
+      actorUserId: 'u', actorDisplayName: 'Juan',
+    );
+    final pig = await f.collection('farms').doc('f1').collection('pigs').doc('p1').get();
+    expect(pig.data()!['status'], 'deceased');
+    final mort = await f.collection('farms').doc('f1').collection('pigs').doc('p1')
+        .collection('mortality_record').doc('primary').get();
+    expect(mort.data()!['cause'], 'respiratory');
+    final activity = await f.collection('farms').doc('f1').collection('activity').get();
+    expect(activity.docs.where((d) => d.data()['action'] == 'mortality_logged'),
+      hasLength(1));
+  });
+}
+```
+
+- [ ] **Step 11.2: Provider + screen**
+
+Add to `pig_providers.dart`:
+
+```dart
+import '../data/mortality_repository.dart';
+import '../domain/mortality_record.dart';
+
+final mortalityRepositoryProvider = Provider<MortalityRepository>(
+  (ref) => MortalityRepository(
+    ref.watch(firestoreProvider), ref.watch(activityRepositoryProvider)));
+
+final mortalityForPigProvider =
+    StreamProvider.family<MortalityRecord?, ({String farmId, String pigId})>((ref, args) {
+  return ref.watch(mortalityRepositoryProvider).streamMortality(
+        farmId: args.farmId, pigId: args.pigId);
+});
+
+final allMortalitiesProvider =
+    StreamProvider.family<List<MortalityRecord>, String>((ref, farmId) {
+  return ref.watch(mortalityRepositoryProvider).streamAllMortalities(farmId);
+});
+```
+
+`lib/src/features/pigs/presentation/mortality_log_screen.dart`:
+
+```dart
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../media/media_providers.dart';
+import '../../media/photo_picker.dart';
+import '../application/pig_providers.dart';
+import '../domain/pig.dart';
+
+const _causes = ['Respiratory', 'Digestive', 'Accident', 'Unknown', 'ASF-suspected', 'Other'];
+
+class MortalityLogScreen extends ConsumerStatefulWidget {
+  const MortalityLogScreen({super.key, required this.pig});
+  final Pig pig;
+  @override
+  ConsumerState<MortalityLogScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<MortalityLogScreen> {
+  DateTime _date = DateTime.now();
+  String? _cause;
+  final _notes = TextEditingController();
+  final List<File> _photos = [];
+  bool _busy = false;
+
+  @override
+  void dispose() { _notes.dispose(); super.dispose(); }
+
+  Future<void> _addPhoto() async {
+    final f = await PhotoPicker.pick(context);
+    if (f != null) setState(() => _photos.add(f));
+  }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Confirm mortality'),
+        content: Text('Mark ${widget.pig.tagId} as deceased? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _busy = true);
+    final storage = ref.read(firebaseStorageProvider);
+    final name = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    final urls = <String>[];
+    try {
+      for (var i = 0; i < _photos.length; i++) {
+        final path = 'farms/$farmId/mortality/${widget.pig.id}/$i.jpg';
+        final t = await storage.ref(path).putFile(_photos[i]);
+        urls.add(await t.ref.getDownloadURL());
+      }
+      await ref.read(mortalityRepositoryProvider).logMortality(
+        farmId: farmId, pigId: widget.pig.id, tagId: widget.pig.tagId,
+        areaId: widget.pig.currentAreaId,
+        date: Timestamp.fromDate(_date),
+        cause: _cause,
+        photoUrls: urls,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid, actorDisplayName: name,
+      );
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Mortality · ${widget.pig.tagId}')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Date'),
+              subtitle: Text(_date.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context, initialDate: _date,
+                  firstDate: DateTime(2024), lastDate: DateTime.now());
+                if (p != null) setState(() => _date = p);
+              },
+            ),
+            const SizedBox(height: 8),
+            const Text('Cause', style: TextStyle(fontWeight: FontWeight.bold)),
+            Wrap(
+              spacing: 8,
+              children: _causes.map((c) => ChoiceChip(
+                label: Text(c),
+                selected: _cause == c,
+                onSelected: (sel) => setState(() => _cause = sel ? c : null),
+              )).toList(),
+            ),
+            const SizedBox(height: 12),
+            const Text('Photos (optional)', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(
+              height: 80,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  ..._photos.map((f) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(8),
+                      child: Image.file(f, width: 80, height: 80, fit: BoxFit.cover)),
+                  )),
+                  GestureDetector(onTap: _addPhoto, child: Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8)),
+                    child: const Icon(Icons.add_a_photo),
+                  )),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+              onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator()
+                  : const Text('Mark deceased'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 11.3: Wire from Profile tab**
+
+In `pig_detail_screen.dart` `_ProfileTab`, add a destructive button at the bottom (visible only when pig is active):
+
+```dart
+if (pig.status == PigStatus.active) ...[
+  const SizedBox(height: 24),
+  OutlinedButton.icon(
+    icon: const Icon(Icons.heart_broken, color: Colors.red),
+    label: const Text('Mark deceased', style: TextStyle(color: Colors.red)),
+    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+    onPressed: () => Navigator.push(context, MaterialPageRoute(
+      builder: (_) => MortalityLogScreen(pig: pig))),
+  ),
+],
+```
+
+Import: `import 'mortality_log_screen.dart';`
+
+Note: `_ProfileTab` currently extends `StatelessWidget` with `build(BuildContext)`. To use `Navigator.push`, it already has `context` — no Riverpod needed.
+
+- [ ] **Step 11.4: Run + commit**
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(mortality): mortality log with cause + photos; updates pig status
+
+- MortalityRecord single-doc-per-pig at mortality_record/primary
+- Repository writes record + flips pig.status + activity, all atomic
+- Quick-pick cause chips (respiratory, digestive, accident, ASF-suspected, ...)
+- Destructive confirmation dialog before commit"
+```
+
+---
+
+_(Tasks 12–17 continue: Tasks UI w/ assignment, Shifts & Roster, Activity Feed, Yield Reports, Farm Layout, Real Dashboard + Offline + Photo Queue Flushing, Firestore Security Rules.)_

@@ -33,7 +33,12 @@ class _S extends ConsumerState<EditAreaScreen> {
   Future<void> _save() async {
     final farmId = ref.read(selectedFarmIdProvider);
     if (farmId == null) return;
-    if (_name.text.trim().isEmpty) return;
+    if (_name.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Area name is required.')),
+      );
+      return;
+    }
     setState(() => _busy = true);
     final repo = ref.read(areaRepositoryProvider);
     try {
@@ -65,29 +70,52 @@ class _S extends ConsumerState<EditAreaScreen> {
     final farmId = ref.read(selectedFarmIdProvider)!;
     final nameCtl = TextEditingController();
     final capCtl = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add pen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: 'Pen name')),
-            TextField(controller: capCtl, decoration: const InputDecoration(labelText: 'Capacity (optional)'),
-                keyboardType: TextInputType.number),
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Add pen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtl, decoration: const InputDecoration(labelText: 'Pen name')),
+              TextField(controller: capCtl, decoration: const InputDecoration(labelText: 'Capacity (optional)'),
+                  keyboardType: TextInputType.number),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
-        ],
-      ),
-    );
-    if (result == true && nameCtl.text.trim().isNotEmpty) {
-      await ref.read(areaRepositoryProvider).createPen(
-            farmId: farmId, areaId: _savedAreaId!,
-            name: nameCtl.text, capacity: int.tryParse(capCtl.text), notes: null,
-          );
+      );
+      if (result == true) {
+        final name = nameCtl.text.trim();
+        if (name.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Pen name is required.')),
+            );
+          }
+          return;
+        }
+        final cap = int.tryParse(capCtl.text.trim());
+        if (capCtl.text.trim().isNotEmpty && (cap == null || cap < 1)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Capacity must be a positive whole number.')),
+            );
+          }
+          return;
+        }
+        await ref.read(areaRepositoryProvider).createPen(
+              farmId: farmId, areaId: _savedAreaId!,
+              name: name, capacity: cap, notes: null,
+            );
+      }
+    } finally {
+      nameCtl.dispose();
+      capCtl.dispose();
     }
   }
 

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -13,59 +15,61 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Iconsax.arrow_left_2),
           onPressed: () => context.pop(),
         ),
         title: const Text('Settings'),
-        centerTitle: true,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
-          // Reusable menu item widget for a clean look
+          const SectionHeader(title: 'Account'),
           _SettingsMenuItem(
             icon: Iconsax.user,
-            title: 'My Profile',
+            title: 'My profile',
             onTap: () {
               // TODO: Navigate to Profile Screen
             },
           ),
+          const SectionHeader(title: 'Farm'),
           _SettingsMenuItem(
             icon: Iconsax.building,
-            title: 'Farm Settings',
+            title: 'Farm settings',
             onTap: () {
               // TODO: Navigate to Farm Settings Screen
             },
           ),
           _SettingsMenuItem(
-            icon: Iconsax.user,
-            title: 'Manage Members',
+            icon: Iconsax.people,
+            title: 'Manage members',
             onTap: () {
               // TODO: Navigate to Members Screen
             },
           ),
+          const SectionHeader(title: 'App'),
           _SettingsMenuItem(
             icon: Iconsax.cpu_setting,
-            title: 'Farm Automations',
+            title: 'Farm automations',
             onTap: () {
               // TODO: Navigate to Automations Screen
             },
           ),
-          const SizedBox(height: 24),
-          const Divider(),
-          const SizedBox(height: 16),
-          // Special menu item for the logout action
+          const SizedBox(height: 32),
           _SettingsMenuItem(
             icon: Iconsax.logout,
-            title: 'Logout',
-            // Use the theme's error color for a distinct look
-            iconColor: Theme.of(context).colorScheme.error,
-            textColor: Theme.of(context).colorScheme.error,
+            title: 'Sign out',
+            destructive: true,
             onTap: () async {
-              // Call the signOut method from your repository
+              final ok = await ConfirmDialog.show(
+                context: context,
+                title: 'Sign out?',
+                message: "You'll need to sign back in to access your farm.",
+                confirmLabel: 'Sign out',
+                destructive: true,
+              );
+              if (!ok) return;
               await ref.read(authRepositoryProvider).signOut();
-              // GoRouter's redirect logic will automatically handle
-              // navigating the user to the login screen.
+              // GoRouter's redirect logic handles navigation to login.
             },
           ),
         ],
@@ -80,44 +84,48 @@ class _SettingsMenuItem extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
-    this.iconColor,
-    this.textColor,
+    this.destructive = false,
   });
 
   final IconData icon;
   final String title;
   final VoidCallback onTap;
-  final Color? iconColor;
-  final Color? textColor;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final color = iconColor ?? Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final fg = destructive ? colorScheme.error : colorScheme.primary;
+    final discBg = destructive
+        ? colorScheme.errorContainer
+        : colorScheme.primaryContainer;
+    final titleColor =
+        destructive ? colorScheme.error : colorScheme.onSurface;
 
     return Card(
-      // Using Card for elevation and consistent styling
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
       child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         onTap: onTap,
         leading: Container(
-          padding: const EdgeInsets.all(8.0),
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12.0),
+            color: discBg,
+            shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: color),
+          child: Icon(icon, color: fg, size: 20),
         ),
         title: Text(
           title,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: textColor,
-              ),
+          style: textTheme.titleMedium?.copyWith(color: titleColor),
         ),
-        trailing: const Icon(
-          Icons.arrow_forward_ios,
-          size: 16.0,
-          color: Colors.grey,
+        trailing: Icon(
+          Iconsax.arrow_right_3,
+          size: 20,
+          color: colorScheme.onSurfaceVariant,
         ),
       ),
     );

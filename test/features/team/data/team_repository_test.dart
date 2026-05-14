@@ -63,12 +63,46 @@ void main() {
     final invId = await repo.createInvitation(
       farmId: 'f1', email: 'me@x.com', role: Role.worker, assignedAreaIds: const ['a1'], invitedBy: 'u1',
     );
-    await repo.acceptInvitation(farmId: 'f1', invitationId: invId, userId: 'u-new');
+    await repo.acceptInvitation(
+      farmId: 'f1', invitationId: invId, userId: 'u-new', userEmail: 'me@x.com',
+    );
     final memberDoc = await f.collection('farms').doc('f1').collection('members').doc('u-new').get();
     expect(memberDoc.exists, true);
     expect(memberDoc.data()!['role'], 'worker');
     final invDoc = await f.collection('farms').doc('f1').collection('invitations').doc(invId).get();
     expect(invDoc.data()!['status'], 'accepted');
+  });
+
+  test('acceptInvitation throws when invitation does not exist', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = TeamRepository(f);
+    expect(
+      () => repo.acceptInvitation(
+        farmId: 'f1',
+        invitationId: 'does-not-exist',
+        userId: 'u-new',
+        userEmail: 'me@x.com',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('acceptInvitation throws when status is not pending', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = TeamRepository(f);
+    final invId = await repo.createInvitation(
+      farmId: 'f1', email: 'me@x.com', role: Role.worker, assignedAreaIds: const [], invitedBy: 'u1',
+    );
+    await repo.revokeInvitation(farmId: 'f1', invitationId: invId);
+    expect(
+      () => repo.acceptInvitation(
+        farmId: 'f1',
+        invitationId: invId,
+        userId: 'u-new',
+        userEmail: 'me@x.com',
+      ),
+      throwsA(isA<StateError>()),
+    );
   });
 
   test('streamUserMemberships returns user farms via collection-group', () async {

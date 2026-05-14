@@ -18,15 +18,24 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
 
   Future<void> _accept(Invitation inv) async {
     final user = ref.read(authStateChangesProvider).asData?.value;
-    if (user == null) return;
+    if (user == null || user.email == null) return;
     setState(() => _busy = true);
     try {
       await ref.read(teamRepositoryProvider).acceptInvitation(
-            farmId: inv.farmId, invitationId: inv.id, userId: user.uid,
+            farmId: inv.farmId,
+            invitationId: inv.id,
+            userId: user.uid,
+            userEmail: user.email!,
           );
       await persistSelectedFarmId(user.uid, inv.farmId);
       ref.read(selectedFarmIdProvider.notifier).state = inv.farmId;
       if (mounted) context.go('/');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

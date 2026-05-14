@@ -114,20 +114,37 @@ class TeamRepository {
     required String farmId,
     required String invitationId,
     required String userId,
+    required String userEmail,
   }) async {
     final invRef = _invitations(farmId).doc(invitationId);
     final memberRef = _members(farmId).doc(userId);
-    final inv = await invRef.get();
-    final d = inv.data()!;
-    final batch = _firestore.batch();
-    batch.set(memberRef, {
-      'role': d['role'],
-      'assignedAreaIds': d['assignedAreaIds'] ?? const [],
-      'joinedAt': FieldValue.serverTimestamp(),
-      'invitedBy': d['invitedBy'],
+    final normalizedEmail = userEmail.trim().toLowerCase();
+
+    await _firestore.runTransaction((tx) async {
+      final invSnap = await tx.get(invRef);
+      if (!invSnap.exists) {
+        throw StateError('Invitation no longer exists.');
+      }
+      final d = invSnap.data()!;
+      if (d['status'] != 'pending') {
+        throw StateError('This invitation is no longer pending.');
+      }
+      final expiresAt = d['expiresAt'] as Timestamp?;
+      if (expiresAt != null && expiresAt.toDate().isBefore(DateTime.now())) {
+        throw StateError('This invitation has expired.');
+      }
+      final invEmail = (d['email'] as String?)?.trim().toLowerCase();
+      if (invEmail != null && invEmail != normalizedEmail) {
+        throw StateError('This invitation is for a different email address.');
+      }
+      tx.set(memberRef, {
+        'role': d['role'],
+        'assignedAreaIds': d['assignedAreaIds'] ?? const [],
+        'joinedAt': FieldValue.serverTimestamp(),
+        'invitedBy': d['invitedBy'],
+      });
+      tx.update(invRef, {'status': 'accepted'});
     });
-    batch.update(invRef, {'status': 'accepted'});
-    await batch.commit();
   }
 
   /// Collection-group query on `members` to list all farms a user belongs to.

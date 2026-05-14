@@ -6,9 +6,11 @@ import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/pig_providers.dart';
 import '../domain/breeding_record.dart';
+import '../domain/health_record.dart';
 import '../domain/pig.dart';
 import 'breeding_log_screen.dart';
 import 'farrowing_log_screen.dart';
+import 'health_log_screen.dart';
 
 class PigDetailScreen extends ConsumerWidget {
   const PigDetailScreen({super.key, required this.pigId});
@@ -45,9 +47,7 @@ class PigDetailScreen extends ConsumerWidget {
               children: [
                 _ProfileTab(pig: pig),
                 _BreedingTab(pig: pig),
-                const _PlaceholderTab(
-                  text: 'Health records — wired in Task 10',
-                ),
+                _HealthTab(pig: pig),
                 _LineageTab(pig: pig),
               ],
             );
@@ -175,11 +175,155 @@ class _LineageTab extends ConsumerWidget {
   }
 }
 
-class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.text});
-  final String text;
+class _HealthTab extends ConsumerWidget {
+  const _HealthTab({required this.pig});
+  final Pig pig;
+
   @override
-  Widget build(BuildContext context) => Center(child: Text(text));
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recordsAsync = ref.watch(
+      healthForPigProvider((farmId: pig.farmId, pigId: pig.id)),
+    );
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.medical_services),
+        label: const Text('Log health'),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => HealthLogScreen(pig: pig)),
+        ),
+      ),
+      body: recordsAsync.when(
+        data: (records) {
+          if (records.isEmpty) {
+            return const Center(child: Text('No health records yet.'));
+          }
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            children: records.map((r) => _HealthCard(record: r)).toList(),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+      ),
+    );
+  }
+}
+
+class _HealthCard extends StatelessWidget {
+  const _HealthCard({required this.record});
+  final HealthRecord record;
+
+  Color _typeColor() {
+    switch (record.type) {
+      case HealthEventType.vaccination:
+        return Colors.blue;
+      case HealthEventType.treatment:
+        return Colors.orange;
+      case HealthEventType.checkup:
+        return Colors.teal;
+      case HealthEventType.deworming:
+        return Colors.purple;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _typeColor();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    record.type.label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  DateFormat.yMMMd().format(record.date.toDate()),
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (record.productName != null)
+              Text('Product: ${record.productName}'),
+            if (record.dosage != null) Text('Dosage: ${record.dosage}'),
+            if (record.route != null) Text('Route: ${record.route!.label}'),
+            if (record.diagnosis != null)
+              Text('Diagnosis: ${record.diagnosis}'),
+            if (record.costPhp != null)
+              Text('Cost: ₱${record.costPhp!.toStringAsFixed(2)}'),
+            if (record.withdrawalEndDate != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Withdrawal until: '
+                '${DateFormat.yMMMd().format(record.withdrawalEndDate!.toDate())}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+            ],
+            if (record.photoUrls.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 80,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: record.photoUrls
+                      .map(
+                        (url) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              url,
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                width: 80,
+                                height: 80,
+                                color: Colors.grey.shade200,
+                                child: const Icon(Icons.broken_image),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+            if (record.notes != null && record.notes!.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(record.notes!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _BreedingTab extends ConsumerWidget {

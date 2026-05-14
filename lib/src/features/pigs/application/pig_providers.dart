@@ -4,10 +4,12 @@ import '../../tasks/application/task_providers.dart';
 import '../data/batch_repository.dart';
 import '../data/breeding_repository.dart';
 import '../data/farrowing_repository.dart';
+import '../data/health_repository.dart';
 import '../data/pig_repository.dart';
 import '../domain/batch.dart';
 import '../domain/breeding_record.dart';
 import '../domain/farrowing_record.dart';
+import '../domain/health_record.dart';
 import '../domain/pig.dart';
 
 final pigRepositoryProvider = Provider<PigRepository>(
@@ -77,4 +79,20 @@ final allFarrowingsProvider =
 final batchesStreamProvider =
     StreamProvider.family<List<Batch>, String>((ref, farmId) {
   return ref.watch(batchRepositoryProvider).streamBatches(farmId);
+});
+
+final healthRepositoryProvider = Provider<HealthRepository>(
+  (ref) => HealthRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+    ref.watch(taskGeneratorProvider),
+  ),
+);
+
+final healthForPigProvider = StreamProvider.family<List<HealthRecord>,
+    ({String farmId, String pigId})>((ref, args) {
+  return ref.watch(healthRepositoryProvider).streamHealthForPig(
+        farmId: args.farmId,
+        pigId: args.pigId,
+      );
 });

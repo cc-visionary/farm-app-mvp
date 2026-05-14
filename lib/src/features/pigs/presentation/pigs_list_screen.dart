@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -44,6 +47,19 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
     }).toList();
   }
 
+  bool get _hasActiveFilters =>
+      _stageFilter.isNotEmpty ||
+      _onlyMyAreas ||
+      _search.text.trim().isNotEmpty;
+
+  void _clearFilters() {
+    setState(() {
+      _stageFilter.clear();
+      _onlyMyAreas = false;
+      _search.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final farmId = ref.watch(selectedFarmIdProvider);
@@ -72,57 +88,52 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
         title: const Text('Pigs'),
         actions: [
           IconButton(
-            icon: Icon(_showInactive ? Icons.visibility : Icons.visibility_off),
+            icon: Icon(_showInactive ? Iconsax.eye : Iconsax.eye_slash),
             tooltip: _showInactive ? 'Hide inactive' : 'Show inactive',
             onPressed: () => setState(() => _showInactive = !_showInactive),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const AddEditPigScreen()),
         ),
-        tooltip: 'Add pig',
-        child: const Icon(Icons.add),
+        icon: const Icon(Iconsax.add),
+        label: const Text('Add pig'),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
               controller: _search,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 hintText: 'Search by tag ID',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: Icon(Iconsax.search_normal, size: 20),
               ),
             ),
           ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              scrollDirection: Axis.horizontal,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                ...PigStage.values.map((s) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(s.label),
-                        selected: _stageFilter.contains(s),
-                        onSelected: (sel) => setState(() => sel
-                            ? _stageFilter.add(s)
-                            : _stageFilter.remove(s)),
-                      ),
-                    )),
-                Padding(
-                  padding: const EdgeInsets.only(right: 8, left: 4),
-                  child: FilterChip(
-                    label: const Text('My areas only'),
-                    selected: _onlyMyAreas,
-                    onSelected: (sel) =>
-                        setState(() => _onlyMyAreas = sel),
+                ...PigStage.values.map(
+                  (s) => FilterChip(
+                    label: Text(s.label),
+                    selected: _stageFilter.contains(s),
+                    onSelected: (sel) => setState(() => sel
+                        ? _stageFilter.add(s)
+                        : _stageFilter.remove(s)),
                   ),
+                ),
+                FilterChip(
+                  label: const Text('My areas only'),
+                  selected: _onlyMyAreas,
+                  onSelected: (sel) => setState(() => _onlyMyAreas = sel),
                 ),
               ],
             ),
@@ -132,8 +143,33 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
               data: (all) {
                 final list = _filter(all, assigned);
                 if (list.isEmpty) {
-                  return const Center(
-                    child: Text('No pigs match the current filters.'),
+                  if (all.isEmpty) {
+                    return EmptyState(
+                      icon: Iconsax.pet,
+                      title: 'No pigs yet',
+                      subtitle: 'Tap + to add your first pig.',
+                      action: FilledButton.icon(
+                        icon: const Icon(Iconsax.add, size: 20),
+                        label: const Text('Add pig'),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AddEditPigScreen(),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return EmptyState(
+                    icon: Iconsax.search_status,
+                    title: 'No pigs match',
+                    subtitle: 'Try clearing filters.',
+                    action: _hasActiveFilters
+                        ? OutlinedButton(
+                            onPressed: _clearFilters,
+                            child: const Text('Clear filters'),
+                          )
+                        : null,
                   );
                 }
                 // Group by stage with collapsible sections.
@@ -144,8 +180,7 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
                 final stages = byStage.keys.toList()
                   ..sort((a, b) => a.index.compareTo(b.index));
                 return ListView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                   itemCount: stages.length,
                   itemBuilder: (_, si) {
                     final s = stages[si];
@@ -153,14 +188,8 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(
-                              top: 12, bottom: 4, left: 4),
-                          child: Text(
-                            '${s.label} · ${pigs.length}',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                        SectionHeader(
+                          title: '${s.label} · ${pigs.length}',
                         ),
                         ...pigs.map((p) => _PigCard(pig: p)),
                       ],
@@ -168,7 +197,13 @@ class _PigsListScreenState extends ConsumerState<PigsListScreen> {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(
+                child: SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
               error: (e, _) => Center(child: Text('Error: $e')),
             ),
           ),
@@ -184,24 +219,48 @@ class _PigCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final now = DateTime.now();
+    final breed = pig.breed.isEmpty ? '—' : pig.breed;
+    final subtitleParts = [breed, pig.stage.label, pig.ageString(now)];
     return Card(
       child: ListTile(
         leading: CircleAvatar(
+          radius: 18,
           backgroundColor: pig.sex == PigSex.female
-              ? Colors.pink.shade100
-              : Colors.blue.shade100,
-          child: Text(pig.sex == PigSex.female ? '♀' : '♂'),
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerHigh,
+          foregroundColor: pig.sex == PigSex.female
+              ? theme.colorScheme.onPrimaryContainer
+              : theme.colorScheme.onSurfaceVariant,
+          child: Text(
+            pig.sex == PigSex.female ? '♀' : '♂',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
         ),
         title: Text(
           pig.tagId,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: theme.textTheme.titleMedium,
         ),
         subtitle: Text(
-          '${pig.breed.isEmpty ? '—' : pig.breed} · ${pig.stage.label} · ${pig.ageString(now)}',
+          subtitleParts.join(' · '),
+          style: theme.textTheme.bodyMedium,
         ),
         trailing: pig.currentWeight != null
-            ? Text('${pig.currentWeight!.toStringAsFixed(0)} kg')
+            ? RichText(
+                text: TextSpan(
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  children: [
+                    TextSpan(text: pig.currentWeight!.toStringAsFixed(0)),
+                    TextSpan(
+                      text: ' kg',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              )
             : null,
         onTap: () => Navigator.push(
           context,

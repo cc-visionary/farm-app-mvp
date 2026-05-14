@@ -10,6 +10,8 @@ import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/stat_tile.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
+import '../../sales/application/sale_providers.dart';
+import '../../sales/presentation/sale_detail_screen.dart';
 import '../application/pig_providers.dart';
 import '../domain/breeding_record.dart';
 import '../domain/health_record.dart';
@@ -105,6 +107,7 @@ class _ProfileTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
+        if (pig.status == PigStatus.sold) _SoldBanner(pig: pig),
         _PhotoHeader(photoUrl: pig.photoUrl),
         const SectionHeader(title: 'Identity'),
         StatTile(label: 'Tag ID', value: pig.tagId),
@@ -842,6 +845,51 @@ class _StatusPill extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class _SoldBanner extends ConsumerWidget {
+  const _SoldBanner({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final saleAsync = ref.watch(
+      saleForPigProvider((farmId: pig.farmId, pigId: pig.id)),
+    );
+    return Card(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ListTile(
+        leading: Icon(Iconsax.tag, color: theme.colorScheme.primary),
+        title: Text('Sold', style: theme.textTheme.titleMedium),
+        subtitle: saleAsync.when(
+          data: (sale) => sale == null
+              ? const Text('— no sale record found —')
+              : Text(
+                  '${DateFormat.yMMMd().format(sale.saleDate.toDate())} · ${sale.buyerName}',
+                ),
+          loading: () => const Text('Loading sale details…'),
+          error: (e, _) => Text('$e'),
+        ),
+        trailing: saleAsync.maybeWhen(
+          data: (sale) => sale == null ? null : const Icon(Iconsax.arrow_right_3),
+          orElse: () => null,
+        ),
+        onTap: () {
+          final sale = saleAsync.asData?.value;
+          if (sale != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SaleDetailScreen(saleId: sale.id),
+              ),
+            );
+          }
+        },
       ),
     );
   }

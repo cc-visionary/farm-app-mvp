@@ -69,6 +69,7 @@ void main() {
     final memberDoc = await f.collection('farms').doc('f1').collection('members').doc('u-new').get();
     expect(memberDoc.exists, true);
     expect(memberDoc.data()!['role'], 'worker');
+    expect(memberDoc.data()!['_inviteId'], invId);
     final invDoc = await f.collection('farms').doc('f1').collection('invitations').doc(invId).get();
     expect(invDoc.data()!['status'], 'accepted');
   });

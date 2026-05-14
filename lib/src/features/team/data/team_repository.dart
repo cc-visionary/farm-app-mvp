@@ -142,6 +142,7 @@ class TeamRepository {
         'assignedAreaIds': d['assignedAreaIds'] ?? const [],
         'joinedAt': FieldValue.serverTimestamp(),
         'invitedBy': d['invitedBy'],
+        '_inviteId': invitationId,
       });
       tx.update(invRef, {'status': 'accepted'});
     });

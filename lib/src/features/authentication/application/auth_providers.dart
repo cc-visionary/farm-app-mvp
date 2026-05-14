@@ -57,11 +57,9 @@ final userDataProvider = StreamProvider<AppUser?>((ref) {
   });
 });
 
-/// Provides just the [farmId] of the current user.
-/// This is useful for other providers that only need the ID.
+/// Provides the last-selected farm id of the current user.
+/// Task 3 will replace this with a membership-driven active-farm provider.
 final currentFarmIdProvider = Provider<String?>((ref) {
-  // Watch the userDataProvider
   final userData = ref.watch(userDataProvider);
-  // Return the farmId from the user data, or null if not available
-  return userData.asData?.value?.farmId;
+  return userData.asData?.value?.lastSelectedFarmId;
 });

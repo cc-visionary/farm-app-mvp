@@ -1,38 +1,43 @@
-// lib/src/features/authentication/domain/user_model.dart
-
 class AppUser {
   final String uid;
   final String email;
   final String? displayName;
-  final String? farmId;
+  final String? photoUrl;
+  final String? lastSelectedFarmId;
 
-  AppUser({
+  const AppUser({
     required this.uid,
     required this.email,
     this.displayName,
-    this.farmId,
+    this.photoUrl,
+    this.lastSelectedFarmId,
   });
 
-  // Method to check if the user has finished the setup process
-  bool get hasCompletedSetup => farmId != null && farmId!.isNotEmpty;
+  factory AppUser.fromMap(Map<String, dynamic> data) => AppUser(
+    uid: data['uid'] as String,
+    email: data['email'] as String,
+    displayName: data['displayName'] as String?,
+    photoUrl: data['photoUrl'] as String?,
+    lastSelectedFarmId: data['lastSelectedFarmId'] as String?,
+  );
 
-  // Factory constructor to create a User from a Firestore document
-  factory AppUser.fromMap(Map<String, dynamic> data) {
-    return AppUser(
-      uid: data['uid'],
-      email: data['email'],
-      displayName: data['displayName'],
-      farmId: data['farmId'],
-    );
-  }
+  Map<String, dynamic> toMap() => {
+    'uid': uid,
+    'email': email,
+    'displayName': displayName,
+    'photoUrl': photoUrl,
+    'lastSelectedFarmId': lastSelectedFarmId,
+  };
 
-  // Method to convert a User object to a map for Firestore
-  Map<String, dynamic> toMap() {
-    return {
-      'uid': uid,
-      'email': email,
-      'displayName': displayName,
-      'farmId': farmId,
-    };
-  }
+  AppUser copyWith({
+    String? displayName,
+    String? photoUrl,
+    String? lastSelectedFarmId,
+  }) => AppUser(
+    uid: uid,
+    email: email,
+    displayName: displayName ?? this.displayName,
+    photoUrl: photoUrl ?? this.photoUrl,
+    lastSelectedFarmId: lastSelectedFarmId ?? this.lastSelectedFarmId,
+  );
 }

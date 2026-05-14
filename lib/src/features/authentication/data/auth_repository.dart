@@ -91,8 +91,12 @@ class AuthRepository {
     // 1. Create the new farm
     batch.set(farmDoc, newFarm);
 
-    // 2. Update the user with their display name and the new farm ID
-    batch.update(userDoc, {'displayName': displayName, 'farmId': farmDoc.id});
+    // 2. Update the user with their display name and last-selected farm
+    // (Full multi-farm membership wiring lands in Task 3.)
+    batch.update(userDoc, {
+      'displayName': displayName,
+      'lastSelectedFarmId': farmDoc.id,
+    });
 
     // Commit the batch
     await batch.commit();

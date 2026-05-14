@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/activity_providers.dart';
 import '../domain/activity_entry.dart';
@@ -20,43 +23,77 @@ class ActivityScreen extends ConsumerWidget {
     if (farmId == null) return const SizedBox.shrink();
 
     final feedAsync = ref.watch(recentActivityProvider(farmId));
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Activity')),
       body: feedAsync.when(
         data: (entries) {
           if (entries.isEmpty) {
-            return const Center(child: Text('No activity yet.'));
+            return const EmptyState(
+              icon: Iconsax.activity,
+              title: 'No activity yet',
+              subtitle: 'Logged events will appear here.',
+            );
           }
           final groups = _groupByDay(entries);
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             itemCount: groups.length,
             itemBuilder: (_, i) {
               final g = groups[i];
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      g.label,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  SectionHeader(title: g.label),
                   ...g.entries.map(
                     (e) => Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          child: Text(
-                            e.actorDisplayName.isEmpty
-                                ? '?'
-                                : e.actorDisplayName[0],
-                          ),
-                        ),
-                        title: Text(e.summary),
-                        subtitle: Text(
-                          DateFormat.jm().format(e.timestamp.toDate()),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundColor:
+                                  theme.colorScheme.primaryContainer,
+                              foregroundColor:
+                                  theme.colorScheme.onPrimaryContainer,
+                              child: Text(
+                                (e.actorDisplayName.isEmpty
+                                        ? '?'
+                                        : e.actorDisplayName[0])
+                                    .toUpperCase(),
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color:
+                                      theme.colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    e.summary,
+                                    style: theme.textTheme.bodyLarge,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    DateFormat.jm()
+                                        .format(e.timestamp.toDate()),
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                      color:
+                                          theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -66,7 +103,13 @@ class ActivityScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+          child: SizedBox(
+            height: 24,
+            width: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
         error: (e, _) => Center(child: Text('$e')),
       ),
     );

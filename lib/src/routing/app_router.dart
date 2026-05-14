@@ -7,6 +7,7 @@ import '../features/areas/presentation/areas_list_screen.dart';
 import '../features/authentication/application/auth_providers.dart';
 import '../features/authentication/presentation/login_screen.dart';
 import '../features/authentication/presentation/signup_screen.dart';
+import '../features/equipment/presentation/equipment_list_screen.dart';
 import '../features/farms/application/farm_providers.dart';
 import '../features/farms/presentation/create_farm_screen.dart';
 import '../features/farms/presentation/farm_setup_screen.dart';
@@ -57,6 +58,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/create-farm', builder: (c, s) => const CreateFarmScreen()),
       GoRoute(path: '/team', builder: (c, s) => const TeamManagementScreen()),
       GoRoute(path: '/areas', builder: (c, s) => const AreasListScreen()),
+      GoRoute(path: '/equipment', builder: (c, s) => const EquipmentListScreen()),
       GoRoute(
         path: '/',
         builder: (c, s) => const Scaffold(

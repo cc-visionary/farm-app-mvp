@@ -41,7 +41,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       }
 
       // Has at least one membership; ensure selected farm is set.
-      final selected = ref.read(selectedFarmIdProvider);
+      // Watch so the router rebuilds once the initial resolver populates it.
+      final selected = ref.watch(selectedFarmIdProvider);
       if (selected == null) return '/splash';
 
       if (isAtAuth || isAtSetup) return '/';

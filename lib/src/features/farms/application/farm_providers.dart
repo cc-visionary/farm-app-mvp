@@ -25,7 +25,7 @@ final selectedFarmProvider = StreamProvider<Farm?>((ref) {
 
 /// Resolves the initial selected farm from user memberships + stored preference.
 /// Called once at app start when memberships first load.
-final initialFarmResolverProvider = Provider<void>((ref) {
+final initialFarmResolverProvider = FutureProvider<void>((ref) async {
   final user = ref.watch(authStateChangesProvider).asData?.value;
   if (user == null) return;
   final memberships = ref.watch(userMembershipsProvider(user.uid)).asData?.value;
@@ -33,13 +33,12 @@ final initialFarmResolverProvider = Provider<void>((ref) {
   final current = ref.read(selectedFarmIdProvider);
   if (current != null && memberships.any((m) => m.farmId == current)) return;
 
-  SharedPreferences.getInstance().then((prefs) {
-    final stored = prefs.getString('lastSelectedFarmId_${user.uid}');
-    final pick = stored != null && memberships.any((m) => m.farmId == stored)
-        ? stored
-        : memberships.first.farmId;
-    ref.read(selectedFarmIdProvider.notifier).state = pick;
-  });
+  final prefs = await SharedPreferences.getInstance();
+  final stored = prefs.getString('lastSelectedFarmId_${user.uid}');
+  final pick = stored != null && memberships.any((m) => m.farmId == stored)
+      ? stored
+      : memberships.first.farmId;
+  ref.read(selectedFarmIdProvider.notifier).state = pick;
 });
 
 Future<void> persistSelectedFarmId(String userId, String farmId) async {

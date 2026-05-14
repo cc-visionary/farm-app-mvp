@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconsax/iconsax.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/team_providers.dart';
@@ -43,23 +44,72 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text("You're invited")),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
+      body: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         itemCount: widget.invitations.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (_, i) {
           final inv = widget.invitations[i];
           return Card(
-            child: ListTile(
-              title: Consumer(builder: (context, ref, _) {
-                final nameAsync = ref.watch(farmNameProvider(inv.farmId));
-                return Text(nameAsync.asData?.value ?? inv.farmId);
-              }),
-              subtitle: Text('Role: ${inv.role.value}'),
-              trailing: ElevatedButton(
-                onPressed: _busy ? null : () => _accept(inv),
-                child: const Text('Accept'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Iconsax.people,
+                          size: 20,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final nameAsync =
+                                    ref.watch(farmNameProvider(inv.farmId));
+                                return Text(
+                                  nameAsync.asData?.value ?? inv.farmId,
+                                  style: textTheme.titleMedium,
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Role: ${inv.role.value}',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _busy ? null : () => _accept(inv),
+                    child: const Text('Accept invitation'),
+                  ),
+                ],
               ),
             ),
           );

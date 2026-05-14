@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../application/farm_providers.dart';
 
@@ -17,7 +18,11 @@ class _CreateFarmScreenState extends ConsumerState<CreateFarmScreen> {
   String? _error;
 
   @override
-  void dispose() { _displayName.dispose(); _farmName.dispose(); super.dispose(); }
+  void dispose() {
+    _displayName.dispose();
+    _farmName.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     final user = ref.read(authStateChangesProvider).asData?.value;
@@ -26,16 +31,22 @@ class _CreateFarmScreenState extends ConsumerState<CreateFarmScreen> {
       setState(() => _error = 'Both fields are required.');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       await ref.read(authRepositoryProvider).setDisplayName(
-            userId: user.uid, displayName: _displayName.text.trim(),
+            userId: user.uid,
+            displayName: _displayName.text.trim(),
           );
       final farmId = await ref.read(farmRepositoryProvider).createFarmWithOwner(
-            name: _farmName.text.trim(), ownerUserId: user.uid,
+            name: _farmName.text.trim(),
+            ownerUserId: user.uid,
           );
       await ref.read(authRepositoryProvider).setLastSelectedFarmId(
-            userId: user.uid, farmId: farmId,
+            userId: user.uid,
+            farmId: farmId,
           );
       await persistSelectedFarmId(user.uid, farmId);
       ref.read(selectedFarmIdProvider.notifier).state = farmId;
@@ -49,28 +60,60 @@ class _CreateFarmScreenState extends ConsumerState<CreateFarmScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Welcome — set up your farm')),
+      appBar: AppBar(title: const Text('Set up your farm')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Your name', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              "Welcome",
+              style: textTheme.headlineLarge,
+            ),
             const SizedBox(height: 8),
-            TextField(controller: _displayName, decoration: const InputDecoration(labelText: 'Display name')),
-            const SizedBox(height: 24),
-            const Text('Farm name', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(controller: _farmName, decoration: const InputDecoration(labelText: 'Farm name')),
+            Text(
+              "Tell us a bit about you and your farm.",
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SectionHeader(title: 'About you'),
+            TextField(
+              controller: _displayName,
+              decoration: const InputDecoration(hintText: 'Your name'),
+            ),
+            const SectionHeader(title: 'Your farm'),
+            TextField(
+              controller: _farmName,
+              decoration: const InputDecoration(hintText: 'Farm name'),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 16),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(
+                _error!,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
             ],
             const SizedBox(height: 32),
-            ElevatedButton(
+            FilledButton(
               onPressed: _loading ? null : _submit,
-              child: _loading ? const CircularProgressIndicator() : const Text('Create farm'),
+              child: _loading
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : const Text('Create farm'),
             ),
           ],
         ),

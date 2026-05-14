@@ -8045,4 +8045,1053 @@ git commit -m "feat(mortality): mortality log with cause + photos; updates pig s
 
 ---
 
-_(Tasks 12–17 continue: Tasks UI w/ assignment, Shifts & Roster, Activity Feed, Yield Reports, Farm Layout, Real Dashboard + Offline + Photo Queue Flushing, Firestore Security Rules.)_
+---
+
+## Task 12: Tasks Screen + Manual Task Creation + Assignment
+
+**Goal:** Surface auto-generated and manual tasks. Workers see "My Tasks" (assigned to them); Managers/Owners see Open and can create manual tasks assigned to specific users or areas.
+
+**Files:**
+- Create:
+  - `lib/src/features/tasks/presentation/tasks_screen.dart`
+  - `lib/src/features/tasks/presentation/create_task_screen.dart`
+
+### Steps
+
+- [ ] **Step 12.1: Tasks screen**
+
+`lib/src/features/tasks/presentation/tasks_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/permissions/role.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/task_providers.dart';
+import '../domain/task.dart';
+import 'create_task_screen.dart';
+
+class TasksScreen extends ConsumerWidget {
+  const TasksScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return const SizedBox.shrink();
+    final role = ref.watch(memberForUserProvider(
+        (farmId: farmId, userId: user.uid))).asData?.value?.role ?? Role.worker;
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Tasks'),
+          bottom: const TabBar(tabs: [
+            Tab(text: 'My Tasks'),
+            Tab(text: 'All Open'),
+          ]),
+        ),
+        floatingActionButton: PermissionService.canCreateOrAssignTasks(role)
+            ? FloatingActionButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const CreateTaskScreen())),
+                child: const Icon(Icons.add),
+              )
+            : null,
+        body: TabBarView(children: [
+          _TaskList(farmId: farmId, userId: user.uid, onlyMine: true),
+          _TaskList(farmId: farmId, userId: user.uid, onlyMine: false),
+        ]),
+      ),
+    );
+  }
+}
+
+class _TaskList extends ConsumerWidget {
+  const _TaskList({required this.farmId, required this.userId, required this.onlyMine});
+  final String farmId;
+  final String userId;
+  final bool onlyMine;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasksAsync = onlyMine
+        ? ref.watch(myTasksStreamProvider((farmId: farmId, userId: userId)))
+        : ref.watch(openTasksStreamProvider(farmId));
+    return tasksAsync.when(
+      data: (tasks) {
+        if (tasks.isEmpty) {
+          return Center(child: Text(onlyMine ? 'No tasks assigned to you.' : 'No open tasks.'));
+        }
+        return ListView(
+          padding: const EdgeInsets.all(12),
+          children: tasks.map((t) => _TaskCard(task: t)).toList(),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('$e')),
+    );
+  }
+}
+
+class _TaskCard extends ConsumerWidget {
+  const _TaskCard({required this.task});
+  final FarmTask task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = DateTime.now();
+    final due = task.dueDate.toDate();
+    final overdue = due.isBefore(now);
+    return Card(
+      child: ListTile(
+        leading: Icon(_icon(task.type),
+            color: overdue ? Colors.red : Theme.of(context).primaryColor),
+        title: Text(task.title),
+        subtitle: Text(
+          'Due ${DateFormat.yMMMd().format(due)}'
+          '${task.assignedTo == null ? "" : " · assigned to ${task.assignedTo!.kind}:${task.assignedTo!.id}"}',
+          style: TextStyle(color: overdue ? Colors.red : Colors.grey),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.check_circle_outline),
+          tooltip: 'Mark complete',
+          onPressed: () async {
+            final user = ref.read(authStateChangesProvider).asData?.value;
+            if (user == null) return;
+            await ref.read(taskRepositoryProvider).completeTask(
+                  farmId: task.farmId, taskId: task.id, userId: user.uid);
+          },
+        ),
+      ),
+    );
+  }
+
+  IconData _icon(TaskType t) {
+    switch (t) {
+      case TaskType.pregnancyCheck: return Icons.fact_check;
+      case TaskType.farrowingPrep: return Icons.event_available;
+      case TaskType.farrowingExpected: return Icons.child_friendly;
+      case TaskType.vaccinationDue: return Icons.medical_services;
+      case TaskType.withdrawalEnd: return Icons.timer;
+      case TaskType.manual: return Icons.task_alt;
+    }
+  }
+}
+```
+
+- [ ] **Step 12.2: Create Task screen**
+
+`lib/src/features/tasks/presentation/create_task_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../areas/application/area_providers.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/task_providers.dart';
+import '../domain/task.dart';
+
+class CreateTaskScreen extends ConsumerStatefulWidget {
+  const CreateTaskScreen({super.key});
+  @override
+  ConsumerState<CreateTaskScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<CreateTaskScreen> {
+  final _title = TextEditingController();
+  final _desc = TextEditingController();
+  DateTime _due = DateTime.now().add(const Duration(days: 1));
+  /// 'user' or 'area' or null
+  String? _assignKind;
+  String? _assignId;
+  bool _busy = false;
+
+  @override
+  void dispose() { _title.dispose(); _desc.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_title.text.trim().isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(taskRepositoryProvider).createManualTask(
+        farmId: farmId, title: _title.text.trim(),
+        description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
+        dueDate: Timestamp.fromDate(_due),
+        assignedTo: (_assignKind != null && _assignId != null)
+            ? TaskAssignment(kind: _assignKind!, id: _assignId!) : null,
+        creatorUserId: user.uid,
+      );
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final members = (farmId != null)
+        ? ref.watch(membersStreamProvider(farmId)).asData?.value ?? const []
+        : const [];
+    final areas = (farmId != null)
+        ? ref.watch(areasStreamProvider(farmId)).asData?.value ?? const []
+        : const [];
+    return Scaffold(
+      appBar: AppBar(title: const Text('New task')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(controller: _title,
+              decoration: const InputDecoration(labelText: 'Title')),
+            const SizedBox(height: 12),
+            TextField(controller: _desc,
+              decoration: const InputDecoration(labelText: 'Description'),
+              maxLines: 3),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Due date'),
+              subtitle: Text(_due.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context, initialDate: _due,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)));
+                if (p != null) setState(() => _due = p);
+              },
+            ),
+            const SizedBox(height: 12),
+            const Text('Assign to', style: TextStyle(fontWeight: FontWeight.bold)),
+            DropdownButtonFormField<String?>(
+              value: _assignKind,
+              decoration: const InputDecoration(labelText: 'Type'),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('— unassigned —')),
+                DropdownMenuItem(value: 'user', child: Text('Specific user')),
+                DropdownMenuItem(value: 'area', child: Text('Any worker in an area')),
+              ],
+              onChanged: (v) => setState(() { _assignKind = v; _assignId = null; }),
+            ),
+            if (_assignKind == 'user')
+              DropdownButtonFormField<String>(
+                value: _assignId,
+                decoration: const InputDecoration(labelText: 'User'),
+                items: members.map((m) =>
+                  DropdownMenuItem(value: m.userId, child: Text(m.userId))).toList(),
+                onChanged: (v) => setState(() => _assignId = v),
+              ),
+            if (_assignKind == 'area')
+              DropdownButtonFormField<String>(
+                value: _assignId,
+                decoration: const InputDecoration(labelText: 'Area'),
+                items: areas.map((a) =>
+                  DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
+                onChanged: (v) => setState(() => _assignId = v),
+              ),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Create task')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 12.3: Wire route + commit**
+
+In `app_router.dart`:
+
+```dart
+GoRoute(path: '/tasks', builder: (c, s) => const TasksScreen()),
+```
+
+Add import.
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(tasks): tasks screen with My Tasks/All Open tabs and manual creation
+
+- Tasks screen with two tabs (mine vs all open)
+- Tap-to-complete with completedBy/completedAt timestamps
+- Manual task creation with optional user or area assignment
+- Overdue tasks show in red"
+```
+
+---
+
+## Task 13: Shifts & Roster
+
+**Goal:** Recurring shift assignments by area + day-of-week pattern. Today's Roster widget shows who is on-shift in each area today.
+
+**Files:**
+- Create:
+  - `lib/src/features/shifts/domain/shift.dart`
+  - `lib/src/features/shifts/data/shift_repository.dart`
+  - `lib/src/features/shifts/application/shift_providers.dart`
+  - `lib/src/features/shifts/presentation/shifts_screen.dart`
+  - `lib/src/features/shifts/presentation/edit_shift_screen.dart`
+  - `lib/src/features/shifts/presentation/roster_widget.dart`
+  - `test/features/shifts/domain/shift_test.dart`
+
+### Steps
+
+- [ ] **Step 13.1: Shift model**
+
+`lib/src/features/shifts/domain/shift.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum ShiftPattern {
+  daily('daily', 'Daily'),
+  weekly('weekly', 'Weekly');
+  const ShiftPattern(this.value, this.label);
+  final String value;
+  final String label;
+  static ShiftPattern fromString(String s) =>
+      ShiftPattern.values.firstWhere((p) => p.value == s, orElse: () => ShiftPattern.daily);
+}
+
+class Shift {
+  final String id;
+  final String farmId;
+  final String name;
+  final ShiftPattern pattern;
+  /// 0=Sun, 1=Mon, ..., 6=Sat. Empty for daily pattern.
+  final List<int> daysOfWeek;
+  /// 'HH:mm' 24h format.
+  final String startTime;
+  final String endTime;
+  final String assignedAreaId;
+  final List<String> assignedUserIds;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+  final Timestamp updatedAt;
+
+  const Shift({
+    required this.id, required this.farmId, required this.name,
+    required this.pattern, required this.daysOfWeek,
+    required this.startTime, required this.endTime,
+    required this.assignedAreaId, required this.assignedUserIds,
+    required this.notes, required this.createdBy,
+    required this.createdAt, required this.updatedAt,
+  });
+
+  factory Shift.fromFirestore(DocumentSnapshot doc, {required String farmId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return Shift(
+      id: doc.id, farmId: farmId,
+      name: d['name'] as String,
+      pattern: ShiftPattern.fromString(d['pattern'] as String? ?? 'daily'),
+      daysOfWeek: List<int>.from(d['daysOfWeek'] ?? const []),
+      startTime: d['startTime'] as String,
+      endTime: d['endTime'] as String,
+      assignedAreaId: d['assignedAreaId'] as String,
+      assignedUserIds: List<String>.from(d['assignedUserIds'] ?? const []),
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+      updatedAt: d['updatedAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'name': name, 'pattern': pattern.value,
+    'daysOfWeek': daysOfWeek,
+    'startTime': startTime, 'endTime': endTime,
+    'assignedAreaId': assignedAreaId,
+    'assignedUserIds': assignedUserIds,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy,
+    'createdAt': createdAt, 'updatedAt': updatedAt,
+  };
+
+  /// Returns true if this shift is active on the given date.
+  bool isActiveOn(DateTime date) {
+    if (pattern == ShiftPattern.daily) return true;
+    // DateTime weekday: 1=Mon..7=Sun. Map to 0=Sun..6=Sat.
+    final dow = date.weekday == 7 ? 0 : date.weekday;
+    return daysOfWeek.contains(dow);
+  }
+}
+```
+
+Test (`test/features/shifts/domain/shift_test.dart`):
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/shifts/domain/shift.dart';
+
+void main() {
+  Shift mk(ShiftPattern p, List<int> days) => Shift(
+    id: 'x', farmId: 'f', name: 'n', pattern: p, daysOfWeek: days,
+    startTime: '06:00', endTime: '14:00',
+    assignedAreaId: 'a', assignedUserIds: const [],
+    notes: null, createdBy: 'u',
+    createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+  );
+
+  test('daily is always active', () {
+    expect(mk(ShiftPattern.daily, []).isActiveOn(DateTime(2026, 5, 14)), true);
+  });
+
+  test('weekly active only on listed days', () {
+    // 2026-05-14 is a Thursday → weekday=4 → dow=4
+    expect(mk(ShiftPattern.weekly, [4]).isActiveOn(DateTime(2026, 5, 14)), true);
+    expect(mk(ShiftPattern.weekly, [1, 3]).isActiveOn(DateTime(2026, 5, 14)), false);
+  });
+
+  test('Sunday maps to 0', () {
+    // 2026-05-17 is Sunday → weekday=7 → dow=0
+    expect(mk(ShiftPattern.weekly, [0]).isActiveOn(DateTime(2026, 5, 17)), true);
+  });
+}
+```
+
+- [ ] **Step 13.2: ShiftRepository + providers**
+
+`lib/src/features/shifts/data/shift_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/shift.dart';
+
+class ShiftRepository {
+  ShiftRepository(this._firestore, this._activity);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('shifts');
+
+  Future<String> createShift({
+    required String farmId, required String name,
+    required ShiftPattern pattern, required List<int> daysOfWeek,
+    required String startTime, required String endTime,
+    required String assignedAreaId, required List<String> assignedUserIds,
+    String? notes,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final ref = _col(farmId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'name': name, 'pattern': pattern.value,
+      'daysOfWeek': daysOfWeek,
+      'startTime': startTime, 'endTime': endTime,
+      'assignedAreaId': assignedAreaId,
+      'assignedUserIds': assignedUserIds,
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'shift_assigned', entityType: 'shift', entityId: ref.id,
+      areaId: assignedAreaId,
+      summary: '$actorDisplayName created shift "$name"',
+    );
+    await batch.commit();
+    return ref.id;
+  }
+
+  Future<void> updateShift({
+    required String farmId, required String shiftId,
+    required String name, required ShiftPattern pattern,
+    required List<int> daysOfWeek,
+    required String startTime, required String endTime,
+    required String assignedAreaId, required List<String> assignedUserIds,
+    String? notes,
+  }) async {
+    await _col(farmId).doc(shiftId).update({
+      'name': name, 'pattern': pattern.value,
+      'daysOfWeek': daysOfWeek,
+      'startTime': startTime, 'endTime': endTime,
+      'assignedAreaId': assignedAreaId,
+      'assignedUserIds': assignedUserIds,
+      'notes': notes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteShift({required String farmId, required String shiftId}) async {
+    await _col(farmId).doc(shiftId).delete();
+  }
+
+  Stream<List<Shift>> streamShifts(String farmId) {
+    return _col(farmId).snapshots().map((s) =>
+      s.docs.map((d) => Shift.fromFirestore(d, farmId: farmId)).toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime)));
+  }
+}
+```
+
+`lib/src/features/shifts/application/shift_providers.dart`:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../activity/application/activity_providers.dart';
+import '../data/shift_repository.dart';
+import '../domain/shift.dart';
+
+final shiftRepositoryProvider = Provider<ShiftRepository>(
+  (ref) => ShiftRepository(
+    ref.watch(firestoreProvider), ref.watch(activityRepositoryProvider)));
+
+final shiftsStreamProvider = StreamProvider.family<List<Shift>, String>(
+  (ref, farmId) => ref.watch(shiftRepositoryProvider).streamShifts(farmId));
+
+/// Active shifts for the given date, sorted by start time.
+final shiftsForDateProvider =
+    Provider.family<List<Shift>, ({String farmId, DateTime date})>((ref, args) {
+  final all = ref.watch(shiftsStreamProvider(args.farmId)).asData?.value ?? const <Shift>[];
+  return all.where((s) => s.isActiveOn(args.date)).toList();
+});
+```
+
+- [ ] **Step 13.3: Shifts screen + edit screen + roster widget**
+
+`lib/src/features/shifts/presentation/shifts_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/shift_providers.dart';
+import '../domain/shift.dart';
+import 'edit_shift_screen.dart';
+import 'roster_widget.dart';
+
+class ShiftsScreen extends ConsumerWidget {
+  const ShiftsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final shiftsAsync = ref.watch(shiftsStreamProvider(farmId));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Shifts & Roster')),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => const EditShiftScreen())),
+        child: const Icon(Icons.add),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const RosterWidget(),
+          const SizedBox(height: 24),
+          const Text('All shifts', style: TextStyle(fontWeight: FontWeight.bold)),
+          shiftsAsync.when(
+            data: (shifts) => Column(
+              children: shifts.map((s) => _ShiftCard(shift: s)).toList(),
+            ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Text('$e'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShiftCard extends StatelessWidget {
+  const _ShiftCard({required this.shift});
+  final Shift shift;
+  static const _dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  @override
+  Widget build(BuildContext context) {
+    final days = shift.pattern == ShiftPattern.daily
+      ? 'Daily'
+      : shift.daysOfWeek.map((d) => _dowLabels[d]).join('/');
+    return Card(
+      child: ListTile(
+        title: Text(shift.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text('$days · ${shift.startTime}-${shift.endTime} · area ${shift.assignedAreaId} · '
+            '${shift.assignedUserIds.length} worker(s)'),
+        onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => EditShiftScreen(existing: shift))),
+      ),
+    );
+  }
+}
+```
+
+`lib/src/features/shifts/presentation/edit_shift_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/permissions/role.dart';
+import '../../areas/application/area_providers.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/shift_providers.dart';
+import '../domain/shift.dart';
+
+class EditShiftScreen extends ConsumerStatefulWidget {
+  const EditShiftScreen({super.key, this.existing});
+  final Shift? existing;
+  @override
+  ConsumerState<EditShiftScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<EditShiftScreen> {
+  late final TextEditingController _name;
+  late final TextEditingController _start;
+  late final TextEditingController _end;
+  late ShiftPattern _pattern;
+  Set<int> _days = {};
+  String? _areaId;
+  Set<String> _workerIds = {};
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _name = TextEditingController(text: e?.name ?? '');
+    _start = TextEditingController(text: e?.startTime ?? '06:00');
+    _end = TextEditingController(text: e?.endTime ?? '14:00');
+    _pattern = e?.pattern ?? ShiftPattern.daily;
+    _days = (e?.daysOfWeek ?? const <int>[]).toSet();
+    _areaId = e?.assignedAreaId;
+    _workerIds = (e?.assignedUserIds ?? const <String>[]).toSet();
+  }
+
+  @override
+  void dispose() { _name.dispose(); _start.dispose(); _end.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_name.text.trim().isEmpty || _areaId == null) return;
+    setState(() => _busy = true);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    try {
+      final repo = ref.read(shiftRepositoryProvider);
+      if (widget.existing == null) {
+        await repo.createShift(
+          farmId: farmId, name: _name.text, pattern: _pattern,
+          daysOfWeek: _pattern == ShiftPattern.weekly ? _days.toList() : const [],
+          startTime: _start.text, endTime: _end.text,
+          assignedAreaId: _areaId!, assignedUserIds: _workerIds.toList(),
+          actorUserId: user.uid, actorDisplayName: actorName,
+        );
+      } else {
+        await repo.updateShift(
+          farmId: farmId, shiftId: widget.existing!.id,
+          name: _name.text, pattern: _pattern,
+          daysOfWeek: _pattern == ShiftPattern.weekly ? _days.toList() : const [],
+          startTime: _start.text, endTime: _end.text,
+          assignedAreaId: _areaId!, assignedUserIds: _workerIds.toList(),
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final areas = farmId != null ? ref.watch(areasStreamProvider(farmId)).asData?.value ?? const [] : const [];
+    final members = farmId != null ? ref.watch(membersStreamProvider(farmId)).asData?.value ?? const [] : const [];
+    final workers = members.where((m) => m.role == Role.worker).toList();
+    const dowNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.existing == null ? 'New shift' : 'Edit shift')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Shift name')),
+            const SizedBox(height: 12),
+            SegmentedButton<ShiftPattern>(
+              segments: ShiftPattern.values.map((p) =>
+                ButtonSegment(value: p, label: Text(p.label))).toList(),
+              selected: {_pattern},
+              onSelectionChanged: (s) => setState(() => _pattern = s.first),
+            ),
+            if (_pattern == ShiftPattern.weekly) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 6, children: List.generate(7, (i) => FilterChip(
+                label: Text(dowNames[i]),
+                selected: _days.contains(i),
+                onSelected: (sel) => setState(() => sel ? _days.add(i) : _days.remove(i)),
+              ))),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(controller: _start,
+                decoration: const InputDecoration(labelText: 'Start (HH:mm)'))),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: _end,
+                decoration: const InputDecoration(labelText: 'End (HH:mm)'))),
+            ]),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _areaId,
+              decoration: const InputDecoration(labelText: 'Area'),
+              items: areas.map<DropdownMenuItem<String>>((a) =>
+                DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
+              onChanged: (v) => setState(() => _areaId = v),
+            ),
+            const SizedBox(height: 12),
+            const Text('Workers', style: TextStyle(fontWeight: FontWeight.bold)),
+            Wrap(spacing: 6, children: workers.map((m) => FilterChip(
+              label: Text(m.userId),
+              selected: _workerIds.contains(m.userId),
+              onSelected: (sel) => setState(() =>
+                sel ? _workerIds.add(m.userId) : _workerIds.remove(m.userId)),
+            )).toList()),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save shift')),
+            if (widget.existing != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+                onPressed: () async {
+                  await ref.read(shiftRepositoryProvider).deleteShift(
+                    farmId: farmId!, shiftId: widget.existing!.id);
+                  if (mounted) Navigator.pop(context);
+                },
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+`lib/src/features/shifts/presentation/roster_widget.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../areas/application/area_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/shift_providers.dart';
+
+class RosterWidget extends ConsumerWidget {
+  const RosterWidget({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final today = DateTime.now();
+    final shifts = ref.watch(shiftsForDateProvider((farmId: farmId, date: today)));
+    final areas = ref.watch(areasStreamProvider(farmId)).asData?.value ?? const [];
+
+    if (shifts.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('No shifts scheduled today.'),
+        ),
+      );
+    }
+
+    // Group by area.
+    final byArea = <String, List<dynamic>>{};
+    for (final s in shifts) {
+      byArea.putIfAbsent(s.assignedAreaId, () => []).add(s);
+    }
+
+    return Card(
+      color: Colors.green.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Today's Roster",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            ...byArea.entries.map((e) {
+              final areaName = areas.firstWhere(
+                (a) => a.id == e.key,
+                orElse: () => areas.isNotEmpty ? areas.first : throw StateError('no area'),
+              ).name;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(areaName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ...e.value.map((s) => Text(
+                      '  • ${s.name} (${s.startTime}-${s.endTime}) — '
+                      '${(s.assignedUserIds as List).join(", ")}',
+                    )),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 13.4: Wire route + commit**
+
+In `app_router.dart`:
+
+```dart
+GoRoute(path: '/shifts', builder: (c, s) => const ShiftsScreen()),
+```
+
+Import the screen.
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(shifts): recurring shifts with roster widget
+
+- Shift model with daily/weekly pattern, dayOfWeek list, time window,
+  area + assigned workers
+- ShiftRepository (CRUD + activity entry)
+- Shifts screen with today's Roster widget grouped by area
+- Edit shift screen with day chips and worker chips
+- Shift.isActiveOn(date) helper with unit tests"
+```
+
+---
+
+## Task 14: Activity Feed UI
+
+**Goal:** Activity-feed dashboard card and full-screen "Activity" tab. The data layer (`ActivityRepository`) already exists from Task 2; this task adds the visual feed.
+
+**Files:**
+- Create:
+  - `lib/src/features/activity/presentation/activity_feed_widget.dart`
+  - `lib/src/features/activity/presentation/activity_screen.dart`
+
+### Steps
+
+- [ ] **Step 14.1: Activity feed widget**
+
+`lib/src/features/activity/presentation/activity_feed_widget.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/activity_providers.dart';
+import '../domain/activity_entry.dart';
+
+class ActivityFeedWidget extends ConsumerWidget {
+  const ActivityFeedWidget({super.key, this.limit = 8});
+  final int limit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final feedAsync = ref.watch(recentActivityProvider(farmId));
+
+    return feedAsync.when(
+      data: (entries) {
+        final items = entries.take(limit).toList();
+        if (items.isEmpty) {
+          return const Card(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('No activity yet. Logged events will appear here.'),
+          ));
+        }
+        return Card(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Row(children: [
+                  Text('Recent activity', style: TextStyle(fontWeight: FontWeight.bold)),
+                ]),
+              ),
+              const Divider(height: 1),
+              ...items.map((e) => _row(context, e)),
+            ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Text('$e'),
+    );
+  }
+
+  Widget _row(BuildContext context, ActivityEntry e) {
+    return ListTile(
+      dense: true,
+      leading: CircleAvatar(
+        radius: 16,
+        child: Text(e.actorDisplayName.isEmpty ? '?' : e.actorDisplayName[0]),
+      ),
+      title: Text(e.summary),
+      trailing: Text(_relative(e.timestamp.toDate()),
+          style: const TextStyle(fontSize: 11, color: Colors.grey)),
+    );
+  }
+
+  String _relative(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    if (d.inHours < 24) return '${d.inHours}h';
+    if (d.inDays < 7) return '${d.inDays}d';
+    return DateFormat.MMMd().format(t);
+  }
+}
+```
+
+- [ ] **Step 14.2: Activity screen (full-page)**
+
+`lib/src/features/activity/presentation/activity_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/activity_providers.dart';
+import '../domain/activity_entry.dart';
+
+class ActivityScreen extends ConsumerWidget {
+  const ActivityScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final feedAsync = ref.watch(recentActivityProvider(farmId));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Activity')),
+      body: feedAsync.when(
+        data: (entries) {
+          if (entries.isEmpty) {
+            return const Center(child: Text('No activity yet.'));
+          }
+          final groups = _groupByDay(entries);
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: groups.length,
+            itemBuilder: (_, i) {
+              final g = groups[i];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(g.label,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  ...g.entries.map((e) => Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        child: Text(e.actorDisplayName.isEmpty ? '?' : e.actorDisplayName[0]),
+                      ),
+                      title: Text(e.summary),
+                      subtitle: Text(DateFormat.jm().format(e.timestamp.toDate())),
+                    ),
+                  )),
+                ],
+              );
+            },
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+
+  List<_DayGroup> _groupByDay(List<ActivityEntry> entries) {
+    final today = DateTime.now();
+    final yesterday = today.subtract(const Duration(days: 1));
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+
+    final groups = <String, List<ActivityEntry>>{};
+    for (final e in entries) {
+      final t = e.timestamp.toDate();
+      String label;
+      if (sameDay(t, today)) {
+        label = 'Today';
+      } else if (sameDay(t, yesterday)) {
+        label = 'Yesterday';
+      } else {
+        label = DateFormat.yMMMMd().format(t);
+      }
+      groups.putIfAbsent(label, () => []).add(e);
+    }
+    return groups.entries.map((e) => _DayGroup(label: e.key, entries: e.value)).toList();
+  }
+}
+
+class _DayGroup {
+  _DayGroup({required this.label, required this.entries});
+  final String label;
+  final List<ActivityEntry> entries;
+}
+```
+
+- [ ] **Step 14.3: Wire route + commit**
+
+In `app_router.dart`:
+
+```dart
+GoRoute(path: '/activity', builder: (c, s) => const ActivityScreen()),
+```
+
+Import.
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(activity): activity feed widget + full-page activity screen
+
+- ActivityFeedWidget for dashboard (top-8 entries)
+- ActivityScreen with Today/Yesterday/date grouping
+- Relative timestamps (just now / 5m / 2h / 3d / Mar 14)"
+```
+
+---
+
+_(Tasks 15–17 continue: Yield Reports with charts, Farm Layout spatial view, Real Dashboard with offline banner and photo-queue flushing, then Firestore Security Rules.)_

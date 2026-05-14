@@ -54,6 +54,8 @@ class _S extends ConsumerState<InviteMemberScreen> {
           children: [
             TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
             const SizedBox(height: 16),
+            // Owner role omitted intentionally: only one owner per farm;
+            // ownership transfer is a separate flow.
             DropdownButtonFormField<Role>(
               initialValue: _role,
               decoration: const InputDecoration(labelText: 'Role'),

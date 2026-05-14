@@ -52,7 +52,10 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
           final inv = widget.invitations[i];
           return Card(
             child: ListTile(
-              title: Text('Farm ${inv.farmId}'),
+              title: Consumer(builder: (context, ref, _) {
+                final nameAsync = ref.watch(farmNameProvider(inv.farmId));
+                return Text(nameAsync.asData?.value ?? inv.farmId);
+              }),
               subtitle: Text('Role: ${inv.role.value}'),
               trailing: ElevatedButton(
                 onPressed: _busy ? null : () => _accept(inv),

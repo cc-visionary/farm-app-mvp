@@ -34,7 +34,10 @@ class TeamManagementScreen extends ConsumerWidget {
             data: (members) => Column(
               children: members.map((m) => Card(
                 child: ListTile(
-                  title: Text(m.userId),
+                  title: Consumer(builder: (context, ref, _) {
+                    final nameAsync = ref.watch(userDisplayNameProvider(m.userId));
+                    return Text(nameAsync.asData?.value ?? m.userId);
+                  }),
                   subtitle: Text('Role: ${m.role.value}'),
                   trailing: DropdownButton<Role>(
                     value: m.role,

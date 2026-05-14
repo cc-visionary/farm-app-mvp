@@ -32,7 +32,7 @@ class FarmSwitcher extends ConsumerWidget {
             }
           },
           itemBuilder: (_) => [
-            ...farms.map((id) => PopupMenuItem(value: id, child: Text('Farm $id'))),
+            ...farms.map((id) => PopupMenuItem(value: id, child: _FarmName(farmId: id))),
             const PopupMenuDivider(),
             const PopupMenuItem(value: '__new__', child: Text('+ Create new farm')),
           ],
@@ -49,5 +49,16 @@ class FarmSwitcher extends ConsumerWidget {
       loading: () => const SizedBox.shrink(),
       error: (e, _) => const Icon(Icons.error),
     );
+  }
+}
+
+class _FarmName extends ConsumerWidget {
+  const _FarmName({required this.farmId});
+  final String farmId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nameAsync = ref.watch(farmNameProvider(farmId));
+    return Text(nameAsync.asData?.value ?? farmId);
   }
 }

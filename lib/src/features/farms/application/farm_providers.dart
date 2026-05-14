@@ -45,3 +45,30 @@ Future<void> persistSelectedFarmId(String userId, String farmId) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString('lastSelectedFarmId_$userId', farmId);
 }
+
+/// Fetches a farm's display name once, falling back to the farmId.
+/// Used by FarmSwitcher and anywhere we need to show a farm name without
+/// streaming the entire farm doc.
+final farmNameProvider =
+    FutureProvider.family<String, String>((ref, farmId) async {
+  final snap = await ref
+      .read(firestoreProvider)
+      .collection('farms')
+      .doc(farmId)
+      .get();
+  return (snap.data()?['name'] as String?) ?? farmId;
+});
+
+/// Fetches a user's display name (or email fallback) for showing in member lists.
+final userDisplayNameProvider =
+    FutureProvider.family<String, String>((ref, userId) async {
+  final snap = await ref
+      .read(firestoreProvider)
+      .collection('users')
+      .doc(userId)
+      .get();
+  final d = snap.data();
+  return (d?['displayName'] as String?) ??
+      (d?['email'] as String?) ??
+      userId;
+});

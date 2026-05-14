@@ -178,6 +178,33 @@ class PigRepository {
     await batch.commit();
   }
 
+  Future<void> setBatch({
+    required String farmId,
+    required String pigId,
+    required String? batchId,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(pigId), {
+      'currentBatchId': batchId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch,
+      farmId: farmId,
+      actorUserId: actorUserId,
+      actorDisplayName: actorDisplayName,
+      action: 'pig_batch_changed',
+      entityType: 'pig',
+      entityId: pigId,
+      summary: batchId == null
+          ? '$actorDisplayName removed pig from batch'
+          : '$actorDisplayName assigned pig to batch $batchId',
+    );
+    await batch.commit();
+  }
+
   Stream<List<Pig>> streamPigs(String farmId) {
     return _col(farmId).snapshots().map((s) =>
         s.docs.map((d) => Pig.fromFirestore(d, farmId: farmId)).toList());

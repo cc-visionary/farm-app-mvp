@@ -5,8 +5,6 @@ import '../domain/batch.dart';
 class BatchRepository {
   BatchRepository(this._firestore, this._activity);
   final FirebaseFirestore _firestore;
-  // Reserved for future activity writes (e.g., batch_closed, batch_sold).
-  // ignore: unused_field
   final ActivityRepository _activity;
 
   CollectionReference<Map<String, dynamic>> _col(String farmId) =>
@@ -41,6 +39,40 @@ class BatchRepository {
       'createdAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
+  }
+
+  /// Adds a pig to a batch: updates pig.currentBatchId AND appends pig.id
+  /// to batch.pigIds + increments batch.count. Atomic.
+  Future<void> addPigToBatch({
+    required String farmId,
+    required String batchId,
+    required String pigId,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(batchId), {
+      'pigIds': FieldValue.arrayUnion([pigId]),
+      'count': FieldValue.increment(1),
+    });
+    batch.update(
+      _firestore.collection('farms').doc(farmId).collection('pigs').doc(pigId),
+      {
+        'currentBatchId': batchId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
+    _activity.addActivityToBatch(
+      batch: batch,
+      farmId: farmId,
+      actorUserId: actorUserId,
+      actorDisplayName: actorDisplayName,
+      action: 'pig_added_to_batch',
+      entityType: 'batch',
+      entityId: batchId,
+      summary: '$actorDisplayName added pig $pigId to batch',
+    );
+    await batch.commit();
   }
 
   Stream<List<Batch>> streamBatches(String farmId) {

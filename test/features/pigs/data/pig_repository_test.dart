@@ -201,6 +201,45 @@ void main() {
     expect(pig!.status, PigStatus.sold);
   });
 
+  test('setBatch updates pig.currentBatchId and writes activity', () async {
+    final t = newRepo();
+    final id = await t.repo.createPig(
+      farmId: 'f1',
+      tagId: 'P',
+      sex: PigSex.female,
+      breed: 'X',
+      birthDate: Timestamp.now(),
+      sireId: null,
+      damId: null,
+      stage: PigStage.sow,
+      currentAreaId: 'a1',
+      currentPenId: null,
+      currentWeight: null,
+      photoUrl: null,
+      notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'J',
+    );
+    await t.repo.setBatch(
+      farmId: 'f1',
+      pigId: id,
+      batchId: 'b1',
+      actorUserId: 'u',
+      actorDisplayName: 'J',
+    );
+    final pig = await t.repo.streamPigById(farmId: 'f1', pigId: id).first;
+    expect(pig!.currentBatchId, 'b1');
+
+    final activity = await t.firestore
+        .collection('farms')
+        .doc('f1')
+        .collection('activity')
+        .where('action', isEqualTo: 'pig_batch_changed')
+        .get();
+    expect(activity.docs, hasLength(1));
+    expect(activity.docs.first.data()['entityId'], id);
+  });
+
   test('streamPigs returns all pigs (active and inactive)', () async {
     final t = newRepo();
     await t.repo.createPig(

@@ -30,6 +30,8 @@ service cloud.firestore {
     function canWriteShifts(farmId)    { return isOwner(farmId) || isManager(farmId); }
     function canManageTeam(farmId)     { return isOwner(farmId) || isManager(farmId); }
     function canEditPig(farmId)        { return isOwner(farmId) || isManager(farmId) || isWorker(farmId); }
+    function canWriteFinancial(farmId) { return isOwner(farmId) || isManager(farmId); }
+    function canLogConsumption(farmId) { return isOwner(farmId) || isManager(farmId) || isWorker(farmId); }
 
     // ============================================================
     // users/{uid} — self only
@@ -200,6 +202,70 @@ service cloud.firestore {
         allow create: if isMember(farmId)
           && request.resource.data.actorUserId == request.auth.uid;
         allow update, delete: if false;
+      }
+
+      // ----------------------------------------------------------
+      // supplies/{supplyId} — inventory items
+      // Owners/managers can write any field; workers may update only
+      // currentStock + updatedAt so consumption transactions succeed.
+      // ----------------------------------------------------------
+      match /supplies/{supplyId} {
+        allow read: if isMember(farmId);
+        allow create, update, delete: if canWriteFinancial(farmId)
+          || (isWorker(farmId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['currentStock', 'updatedAt']));
+      }
+
+      // ----------------------------------------------------------
+      // supply_movements/{movementId} — immutable inventory ledger
+      // Workers can only create consumption entries; managers/owners
+      // can create any type. No updates or deletes are ever allowed.
+      // ----------------------------------------------------------
+      match /supply_movements/{movementId} {
+        allow read: if isMember(farmId);
+        allow create: if canWriteFinancial(farmId)
+          || (isWorker(farmId) && request.resource.data.type == 'consumption');
+        allow update, delete: if false;
+      }
+
+      // ----------------------------------------------------------
+      // purchases/{purchaseId} + line_items/{itemId}
+      // Financial records — owners/managers only.
+      // ----------------------------------------------------------
+      match /purchases/{purchaseId} {
+        allow read: if canWriteFinancial(farmId);
+        allow create, update, delete: if canWriteFinancial(farmId);
+
+        match /line_items/{itemId} {
+          allow read: if canWriteFinancial(farmId);
+          allow create, update, delete: if canWriteFinancial(farmId);
+        }
+      }
+
+      // ----------------------------------------------------------
+      // expenses/{expenseId}
+      // Financial records — owners/managers only.
+      // ----------------------------------------------------------
+      match /expenses/{expenseId} {
+        allow read: if canWriteFinancial(farmId);
+        allow create: if canWriteFinancial(farmId);
+        allow update, delete: if canWriteFinancial(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // sales/{saleId} + line_items/{itemId}
+      // Financial records — owners/managers only.
+      // ----------------------------------------------------------
+      match /sales/{saleId} {
+        allow read: if canWriteFinancial(farmId);
+        allow create: if canWriteFinancial(farmId);
+        allow update, delete: if canWriteFinancial(farmId);
+
+        match /line_items/{itemId} {
+          allow read: if canWriteFinancial(farmId);
+          allow create, update, delete: if canWriteFinancial(farmId);
+        }
       }
     }
   }

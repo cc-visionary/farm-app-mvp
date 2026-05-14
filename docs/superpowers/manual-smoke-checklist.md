@@ -90,6 +90,47 @@ merging `feature/swine-crm-foundation`.
 
 ---
 
+## Sub-project B — Operations & Financials
+
+### Inventory
+- [ ] Owner adds a supply "Grower Feed" (sack, threshold 5).
+- [ ] Owner logs a purchase: 10 sacks at ₱1650. supply.currentStock = 10, weightedAvg = 1650.
+- [ ] Owner logs another purchase: 5 sacks at ₱1750. supply.currentStock = 15, weightedAvg ≈ 1683.33.
+- [ ] Worker logs consumption: 2 sacks on Pen A. supply.currentStock = 13. supply_movement has relatedPenId and relatedBatchId.
+- [ ] Trying to consume 100 sacks shows "Insufficient stock" inline error.
+
+### Expenses
+- [ ] Owner logs a Utilities expense of ₱8500 with description "May electricity". Appears in list with running total.
+- [ ] Filter chips work.
+
+### Sales
+- [ ] Owner opens "Log sale", picks 12 finisher pigs via multi-select bottom sheet.
+- [ ] First row's price/kg defaults to subsequent rows.
+- [ ] Live total updates as weights/prices change.
+- [ ] Save flips all 12 pigs to `sold` atomically; activity feed shows one sale entry.
+- [ ] Attempt to log sale with a pig that's already sold (in another transaction) → atomic rejection.
+
+### Pig Detail integration
+- [ ] Open a sold pig → Profile shows "Sold" banner with date and buyer.
+- [ ] Tap banner → opens Sale Detail screen.
+
+### Profitability
+- [ ] Yield Reports shows Profitability card for Owner/Manager.
+- [ ] Card numbers match a hand-calculation on the seeded data within ₱1 rounding.
+- [ ] Batches list shows all active/closed batches.
+- [ ] Tap a batch → per-batch P&L with cost pie chart.
+
+### Dashboard
+- [ ] "Revenue this month" tile visible to Owner/Manager only; Worker doesn't see it.
+- [ ] "Low stock items" tile shows count of supplies below threshold; tapping it opens inventory (filter not auto-applied — manual filter in v1).
+
+### Security
+- [ ] Worker cannot see Purchases, Expenses, Sales lists (routes 404 or empty due to read denial).
+- [ ] Vet cannot see financial routes.
+- [ ] Cross-farm access denied (try changing farm in switcher mid-session).
+
+---
+
 ## Sign-off
 
 - [ ] All sections above pass on a real Android device against the production Firebase project.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/permissions/role.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/team_providers.dart';
@@ -18,7 +19,10 @@ class _S extends ConsumerState<InviteMemberScreen> {
   String? _error;
 
   @override
-  void dispose() { _email.dispose(); super.dispose(); }
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
 
   Future<void> _send() async {
     final farmId = ref.read(selectedFarmIdProvider);
@@ -28,11 +32,16 @@ class _S extends ConsumerState<InviteMemberScreen> {
       setState(() => _error = 'Email required.');
       return;
     }
-    setState(() { _busy = true; _error = null; });
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       await ref.read(teamRepositoryProvider).createInvitation(
-            farmId: farmId, email: _email.text,
-            role: _role, assignedAreaIds: const [],
+            farmId: farmId,
+            email: _email.text,
+            role: _role,
+            assignedAreaIds: const [],
             invitedBy: user.uid,
           );
       if (mounted) Navigator.pop(context);
@@ -45,20 +54,30 @@ class _S extends ConsumerState<InviteMemberScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Invite member')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
-            const SizedBox(height: 16),
+            const SectionHeader(title: 'Email'),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: const InputDecoration(hintText: 'name@example.com'),
+            ),
+            const SectionHeader(title: 'Role'),
             // Owner role omitted intentionally: only one owner per farm;
             // ownership transfer is a separate flow.
             DropdownButtonFormField<Role>(
               initialValue: _role,
-              decoration: const InputDecoration(labelText: 'Role'),
+              decoration: const InputDecoration(),
               items: const [
                 DropdownMenuItem(value: Role.manager, child: Text('Manager')),
                 DropdownMenuItem(value: Role.worker, child: Text('Worker')),
@@ -67,13 +86,27 @@ class _S extends ConsumerState<InviteMemberScreen> {
               onChanged: (v) => setState(() => _role = v ?? Role.worker),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
             ],
-            const SizedBox(height: 24),
-            ElevatedButton(
+            const SizedBox(height: 32),
+            FilledButton(
               onPressed: _busy ? null : _send,
-              child: _busy ? const CircularProgressIndicator() : const Text('Send invitation'),
+              child: _busy
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : const Text('Send invitation'),
             ),
           ],
         ),

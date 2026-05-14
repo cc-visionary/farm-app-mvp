@@ -2978,4 +2978,1196 @@ git commit -m "feat(areas): replace flat locations with Area > Pen hierarchy
 
 ---
 
-_This is Part 1 of the implementation plan. Subsequent parts cover Tasks 5–17 (Equipment, Pigs, Breeding, Farrowing, Health, Mortality, Tasks, Shifts, Activity Feed, Yield, Farm Layout, Dashboard, Security Rules). They will be appended to this document._
+---
+
+## Task 5: Equipment + Maintenance
+
+**Goal:** Equipment CRUD (areas-located assets like ventilation fans, feeders, generators, scales, structures), status quick-toggle (in use / available / needs repair / retired), maintenance log with photos. Manager/Owner only for edit + maintenance; workers can quick-toggle status.
+
+**Files:**
+- Create:
+  - `lib/src/features/equipment/domain/equipment.dart`
+  - `lib/src/features/equipment/domain/maintenance_record.dart`
+  - `lib/src/features/equipment/data/equipment_repository.dart`
+  - `lib/src/features/equipment/application/equipment_providers.dart`
+  - `lib/src/features/equipment/presentation/equipment_list_screen.dart`
+  - `lib/src/features/equipment/presentation/equipment_detail_screen.dart`
+  - `lib/src/features/equipment/presentation/add_edit_equipment_screen.dart`
+  - `lib/src/features/equipment/presentation/log_maintenance_screen.dart`
+  - `test/features/equipment/domain/equipment_test.dart`
+  - `test/features/equipment/data/equipment_repository_test.dart`
+
+Photo capture will be stubbed with a string URL field for now; full photo upload integrates in Task 9 (Health) where the media service is built. Equipment photos hook in once that exists.
+
+### Steps
+
+- [ ] **Step 5.1: Test — Equipment model**
+
+`test/features/equipment/domain/equipment_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/equipment/domain/equipment.dart';
+
+void main() {
+  test('EquipmentType.fromString resolves all', () {
+    for (final t in EquipmentType.values) {
+      expect(EquipmentType.fromString(t.value), t);
+    }
+    expect(EquipmentType.fromString('foo'), EquipmentType.other);
+  });
+
+  test('EquipmentStatus.fromString resolves all', () {
+    for (final s in EquipmentStatus.values) {
+      expect(EquipmentStatus.fromString(s.value), s);
+    }
+    expect(EquipmentStatus.fromString('asdf'), EquipmentStatus.available);
+  });
+
+  test('EquipmentStatus.next cycles through in_use → available → needs_repair', () {
+    expect(EquipmentStatus.inUse.next, EquipmentStatus.available);
+    expect(EquipmentStatus.available.next, EquipmentStatus.needsRepair);
+    expect(EquipmentStatus.needsRepair.next, EquipmentStatus.inUse);
+    expect(EquipmentStatus.retired.next, EquipmentStatus.retired);
+  });
+
+  test('Equipment round-trips', () async {
+    final f = FakeFirebaseFirestore();
+    final t = Timestamp.fromMillisecondsSinceEpoch(1000);
+    await f.collection('farms').doc('f1').collection('equipment').doc('e1').set({
+      'name': 'Tunnel Fan A',
+      'type': 'ventilation',
+      'areaId': 'a1',
+      'status': 'in_use',
+      'purchaseDate': t,
+      'purchaseCostPhp': 25000.0,
+      'photoUrl': null,
+      'notes': 'south wall',
+      'createdBy': 'u1',
+      'createdAt': t,
+      'updatedAt': t,
+    });
+    final doc = await f.collection('farms').doc('f1').collection('equipment').doc('e1').get();
+    final eq = Equipment.fromFirestore(doc, farmId: 'f1');
+    expect(eq.id, 'e1');
+    expect(eq.type, EquipmentType.ventilation);
+    expect(eq.status, EquipmentStatus.inUse);
+    expect(eq.purchaseCostPhp, 25000.0);
+  });
+}
+```
+
+Run: fails.
+
+- [ ] **Step 5.2: Implement Equipment + MaintenanceRecord**
+
+`lib/src/features/equipment/domain/equipment.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum EquipmentType {
+  ventilation('ventilation', 'Ventilation'),
+  feeder('feeder', 'Feeder'),
+  waterPump('water_pump', 'Water Pump'),
+  generator('generator', 'Generator'),
+  scale('scale', 'Scale'),
+  vehicle('vehicle', 'Vehicle'),
+  structure('structure', 'Structure'),
+  tool('tool', 'Tool'),
+  other('other', 'Other');
+
+  const EquipmentType(this.value, this.label);
+  final String value;
+  final String label;
+
+  static EquipmentType fromString(String s) =>
+      EquipmentType.values.firstWhere((e) => e.value == s, orElse: () => EquipmentType.other);
+}
+
+enum EquipmentStatus {
+  inUse('in_use', 'In use'),
+  available('available', 'Available'),
+  needsRepair('needs_repair', 'Needs repair'),
+  retired('retired', 'Retired');
+
+  const EquipmentStatus(this.value, this.label);
+  final String value;
+  final String label;
+
+  static EquipmentStatus fromString(String s) =>
+      EquipmentStatus.values.firstWhere((e) => e.value == s, orElse: () => EquipmentStatus.available);
+
+  /// Used by the one-tap status cycle (excluding retired which is a manual choice).
+  EquipmentStatus get next {
+    switch (this) {
+      case EquipmentStatus.inUse: return EquipmentStatus.available;
+      case EquipmentStatus.available: return EquipmentStatus.needsRepair;
+      case EquipmentStatus.needsRepair: return EquipmentStatus.inUse;
+      case EquipmentStatus.retired: return EquipmentStatus.retired;
+    }
+  }
+}
+
+class Equipment {
+  final String id;
+  final String farmId;
+  final String name;
+  final EquipmentType type;
+  final String? areaId;
+  final EquipmentStatus status;
+  final Timestamp? purchaseDate;
+  final double? purchaseCostPhp;
+  final String? photoUrl;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+  final Timestamp updatedAt;
+
+  const Equipment({
+    required this.id,
+    required this.farmId,
+    required this.name,
+    required this.type,
+    required this.areaId,
+    required this.status,
+    required this.purchaseDate,
+    required this.purchaseCostPhp,
+    required this.photoUrl,
+    required this.notes,
+    required this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory Equipment.fromFirestore(DocumentSnapshot doc, {required String farmId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return Equipment(
+      id: doc.id,
+      farmId: farmId,
+      name: d['name'] as String,
+      type: EquipmentType.fromString(d['type'] as String? ?? 'other'),
+      areaId: d['areaId'] as String?,
+      status: EquipmentStatus.fromString(d['status'] as String? ?? 'available'),
+      purchaseDate: d['purchaseDate'] as Timestamp?,
+      purchaseCostPhp: (d['purchaseCostPhp'] as num?)?.toDouble(),
+      photoUrl: d['photoUrl'] as String?,
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+      updatedAt: d['updatedAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'type': type.value,
+    if (areaId != null) 'areaId': areaId,
+    'status': status.value,
+    if (purchaseDate != null) 'purchaseDate': purchaseDate,
+    if (purchaseCostPhp != null) 'purchaseCostPhp': purchaseCostPhp,
+    if (photoUrl != null) 'photoUrl': photoUrl,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
+}
+```
+
+`lib/src/features/equipment/domain/maintenance_record.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum MaintenanceType {
+  preventive('preventive', 'Preventive'),
+  repair('repair', 'Repair'),
+  inspection('inspection', 'Inspection');
+
+  const MaintenanceType(this.value, this.label);
+  final String value;
+  final String label;
+
+  static MaintenanceType fromString(String s) =>
+      MaintenanceType.values.firstWhere((e) => e.value == s, orElse: () => MaintenanceType.repair);
+}
+
+class MaintenanceRecord {
+  final String id;
+  final String farmId;
+  final String equipmentId;
+  final MaintenanceType type;
+  final Timestamp date;
+  final String? performedBy;
+  final String? partsReplaced;
+  final double? costPhp;
+  final List<String> photoUrls;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const MaintenanceRecord({
+    required this.id,
+    required this.farmId,
+    required this.equipmentId,
+    required this.type,
+    required this.date,
+    required this.performedBy,
+    required this.partsReplaced,
+    required this.costPhp,
+    required this.photoUrls,
+    required this.notes,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory MaintenanceRecord.fromFirestore(
+    DocumentSnapshot doc, {
+    required String farmId, required String equipmentId,
+  }) {
+    final d = doc.data() as Map<String, dynamic>;
+    return MaintenanceRecord(
+      id: doc.id,
+      farmId: farmId,
+      equipmentId: equipmentId,
+      type: MaintenanceType.fromString(d['type'] as String? ?? 'repair'),
+      date: d['date'] as Timestamp,
+      performedBy: d['performedBy'] as String?,
+      partsReplaced: d['partsReplaced'] as String?,
+      costPhp: (d['costPhp'] as num?)?.toDouble(),
+      photoUrls: List<String>.from(d['photoUrls'] ?? const []),
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'type': type.value,
+    'date': date,
+    if (performedBy != null) 'performedBy': performedBy,
+    if (partsReplaced != null) 'partsReplaced': partsReplaced,
+    if (costPhp != null) 'costPhp': costPhp,
+    'photoUrls': photoUrls,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy,
+    'createdAt': createdAt,
+  };
+}
+```
+
+- [ ] **Step 5.3: Test — EquipmentRepository**
+
+`test/features/equipment/data/equipment_repository_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/equipment/data/equipment_repository.dart';
+import 'package:farm_app/src/features/equipment/domain/equipment.dart';
+import 'package:farm_app/src/features/equipment/domain/maintenance_record.dart';
+import 'package:farm_app/src/features/activity/data/activity_repository.dart';
+
+void main() {
+  test('createEquipment writes and emits activity', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = EquipmentRepository(f, ActivityRepository(f));
+    final id = await repo.createEquipment(
+      farmId: 'f1',
+      name: 'Fan A', type: EquipmentType.ventilation, areaId: 'a1',
+      status: EquipmentStatus.inUse, purchaseDate: null, purchaseCostPhp: null,
+      photoUrl: null, notes: null,
+      actorUserId: 'u1', actorDisplayName: 'Juan',
+    );
+    final eq = await f.collection('farms').doc('f1').collection('equipment').doc(id).get();
+    expect(eq.data()!['name'], 'Fan A');
+    final activity = await f.collection('farms').doc('f1').collection('activity').get();
+    expect(activity.docs, hasLength(1));
+    expect(activity.docs.first.data()['action'], 'equipment_added');
+  });
+
+  test('quickToggleStatus cycles status', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = EquipmentRepository(f, ActivityRepository(f));
+    final id = await repo.createEquipment(
+      farmId: 'f1', name: 'X', type: EquipmentType.tool, areaId: null,
+      status: EquipmentStatus.available, purchaseDate: null, purchaseCostPhp: null,
+      photoUrl: null, notes: null, actorUserId: 'u1', actorDisplayName: 'J',
+    );
+    await repo.quickToggleStatus(
+      farmId: 'f1', equipmentId: id,
+      actorUserId: 'u1', actorDisplayName: 'J',
+    );
+    final eq = await f.collection('farms').doc('f1').collection('equipment').doc(id).get();
+    expect(eq.data()!['status'], 'needs_repair');
+  });
+
+  test('logMaintenance writes record + activity', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = EquipmentRepository(f, ActivityRepository(f));
+    final id = await repo.createEquipment(
+      farmId: 'f1', name: 'Y', type: EquipmentType.feeder, areaId: 'a1',
+      status: EquipmentStatus.inUse, purchaseDate: null, purchaseCostPhp: null,
+      photoUrl: null, notes: null, actorUserId: 'u1', actorDisplayName: 'J',
+    );
+    await repo.logMaintenance(
+      farmId: 'f1', equipmentId: id, equipmentName: 'Y',
+      type: MaintenanceType.repair, date: Timestamp.now(),
+      performedBy: 'ACME Repairs', partsReplaced: 'belt', costPhp: 500,
+      photoUrls: const [], notes: null,
+      actorUserId: 'u1', actorDisplayName: 'J',
+    );
+    final maint = await f.collection('farms').doc('f1').collection('equipment').doc(id).collection('maintenance_records').get();
+    expect(maint.docs, hasLength(1));
+    final activity = await f.collection('farms').doc('f1').collection('activity').get();
+    expect(activity.docs.where((d) => d.data()['action'] == 'maintenance_logged'), hasLength(1));
+  });
+}
+```
+
+- [ ] **Step 5.4: Implement EquipmentRepository**
+
+`lib/src/features/equipment/data/equipment_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/equipment.dart';
+import '../domain/maintenance_record.dart';
+
+class EquipmentRepository {
+  EquipmentRepository(this._firestore, this._activity);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('equipment');
+
+  CollectionReference<Map<String, dynamic>> _maint(String farmId, String eqId) =>
+      _col(farmId).doc(eqId).collection('maintenance_records');
+
+  Future<String> createEquipment({
+    required String farmId,
+    required String name,
+    required EquipmentType type,
+    required String? areaId,
+    required EquipmentStatus status,
+    required Timestamp? purchaseDate,
+    required double? purchaseCostPhp,
+    required String? photoUrl,
+    required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final ref = _col(farmId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'name': name.trim(),
+      'type': type.value,
+      if (areaId != null) 'areaId': areaId,
+      'status': status.value,
+      if (purchaseDate != null) 'purchaseDate': purchaseDate,
+      if (purchaseCostPhp != null) 'purchaseCostPhp': purchaseCostPhp,
+      if (photoUrl != null) 'photoUrl': photoUrl,
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'equipment_added', entityType: 'equipment', entityId: ref.id,
+      areaId: areaId, summary: '$actorDisplayName added equipment "$name"',
+    );
+    await batch.commit();
+    return ref.id;
+  }
+
+  Future<void> updateEquipment({
+    required String farmId,
+    required String equipmentId,
+    required String name,
+    required EquipmentType type,
+    required String? areaId,
+    required EquipmentStatus status,
+    required Timestamp? purchaseDate,
+    required double? purchaseCostPhp,
+    required String? photoUrl,
+    required String? notes,
+  }) async {
+    await _col(farmId).doc(equipmentId).update({
+      'name': name.trim(),
+      'type': type.value,
+      'areaId': areaId,
+      'status': status.value,
+      'purchaseDate': purchaseDate,
+      'purchaseCostPhp': purchaseCostPhp,
+      'photoUrl': photoUrl,
+      'notes': notes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteEquipment({required String farmId, required String equipmentId}) async {
+    await _col(farmId).doc(equipmentId).delete();
+  }
+
+  Future<void> quickToggleStatus({
+    required String farmId,
+    required String equipmentId,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final doc = await _col(farmId).doc(equipmentId).get();
+    final eq = Equipment.fromFirestore(doc, farmId: farmId);
+    final next = eq.status.next;
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(equipmentId), {
+      'status': next.value, 'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'equipment_status_changed', entityType: 'equipment', entityId: equipmentId,
+      areaId: eq.areaId,
+      summary: '$actorDisplayName set "${eq.name}" → ${next.label}',
+    );
+    await batch.commit();
+  }
+
+  Future<void> setStatus({
+    required String farmId,
+    required String equipmentId,
+    required EquipmentStatus status,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final doc = await _col(farmId).doc(equipmentId).get();
+    final eq = Equipment.fromFirestore(doc, farmId: farmId);
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(equipmentId), {
+      'status': status.value, 'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'equipment_status_changed', entityType: 'equipment', entityId: equipmentId,
+      areaId: eq.areaId,
+      summary: '$actorDisplayName set "${eq.name}" → ${status.label}',
+    );
+    await batch.commit();
+  }
+
+  Stream<List<Equipment>> streamEquipment(String farmId) {
+    return _col(farmId).snapshots().map((s) {
+      final list = s.docs.map((d) => Equipment.fromFirestore(d, farmId: farmId)).toList();
+      list.sort((a, b) {
+        final cmp = a.type.index.compareTo(b.type.index);
+        return cmp != 0 ? cmp : a.name.compareTo(b.name);
+      });
+      return list;
+    });
+  }
+
+  Stream<Equipment?> streamEquipmentById({required String farmId, required String equipmentId}) {
+    return _col(farmId).doc(equipmentId).snapshots().map(
+      (d) => d.exists ? Equipment.fromFirestore(d, farmId: farmId) : null,
+    );
+  }
+
+  Future<void> logMaintenance({
+    required String farmId,
+    required String equipmentId,
+    required String equipmentName,
+    required MaintenanceType type,
+    required Timestamp date,
+    required String? performedBy,
+    required String? partsReplaced,
+    required double? costPhp,
+    required List<String> photoUrls,
+    required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final ref = _maint(farmId, equipmentId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'type': type.value,
+      'date': date,
+      if (performedBy != null) 'performedBy': performedBy,
+      if (partsReplaced != null) 'partsReplaced': partsReplaced,
+      if (costPhp != null) 'costPhp': costPhp,
+      'photoUrls': photoUrls,
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'maintenance_logged', entityType: 'equipment', entityId: equipmentId,
+      summary: '$actorDisplayName logged ${type.label} on "$equipmentName"',
+    );
+    await batch.commit();
+  }
+
+  Stream<List<MaintenanceRecord>> streamMaintenance({
+    required String farmId, required String equipmentId,
+  }) {
+    return _maint(farmId, equipmentId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) =>
+            MaintenanceRecord.fromFirestore(d, farmId: farmId, equipmentId: equipmentId)).toList());
+  }
+}
+```
+
+- [ ] **Step 5.5: Equipment providers**
+
+`lib/src/features/equipment/application/equipment_providers.dart`:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../activity/application/activity_providers.dart';
+import '../data/equipment_repository.dart';
+import '../domain/equipment.dart';
+import '../domain/maintenance_record.dart';
+
+final equipmentRepositoryProvider = Provider<EquipmentRepository>(
+  (ref) => EquipmentRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+  ),
+);
+
+final equipmentStreamProvider =
+    StreamProvider.family<List<Equipment>, String>((ref, farmId) {
+  return ref.watch(equipmentRepositoryProvider).streamEquipment(farmId);
+});
+
+final equipmentByIdProvider =
+    StreamProvider.family<Equipment?, ({String farmId, String equipmentId})>((ref, args) {
+  return ref.watch(equipmentRepositoryProvider).streamEquipmentById(
+        farmId: args.farmId, equipmentId: args.equipmentId,
+      );
+});
+
+final maintenanceStreamProvider =
+    StreamProvider.family<List<MaintenanceRecord>, ({String farmId, String equipmentId})>((ref, args) {
+  return ref.watch(equipmentRepositoryProvider).streamMaintenance(
+        farmId: args.farmId, equipmentId: args.equipmentId,
+      );
+});
+```
+
+- [ ] **Step 5.6: Equipment list screen**
+
+`lib/src/features/equipment/presentation/equipment_list_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/permissions/role.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/equipment_providers.dart';
+import '../domain/equipment.dart';
+import 'add_edit_equipment_screen.dart';
+import 'equipment_detail_screen.dart';
+
+class EquipmentListScreen extends ConsumerStatefulWidget {
+  const EquipmentListScreen({super.key});
+  @override
+  ConsumerState<EquipmentListScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<EquipmentListScreen> {
+  EquipmentStatus? _statusFilter;
+  String? _areaFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return const SizedBox.shrink();
+    final role = ref.watch(memberForUserProvider((farmId: farmId, userId: user.uid)))
+        .asData?.value?.role ?? Role.worker;
+    final equipmentAsync = ref.watch(equipmentStreamProvider(farmId));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Equipment')),
+      floatingActionButton: PermissionService.canEditEquipment(role)
+          ? FloatingActionButton(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const AddEditEquipmentScreen())),
+              child: const Icon(Icons.add),
+            )
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('Needs repair'),
+                  selected: _statusFilter == EquipmentStatus.needsRepair,
+                  onSelected: (sel) => setState(() => _statusFilter =
+                      sel ? EquipmentStatus.needsRepair : null),
+                ),
+                FilterChip(
+                  label: const Text('In use'),
+                  selected: _statusFilter == EquipmentStatus.inUse,
+                  onSelected: (sel) => setState(() => _statusFilter =
+                      sel ? EquipmentStatus.inUse : null),
+                ),
+                FilterChip(
+                  label: const Text('Available'),
+                  selected: _statusFilter == EquipmentStatus.available,
+                  onSelected: (sel) => setState(() => _statusFilter =
+                      sel ? EquipmentStatus.available : null),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: equipmentAsync.when(
+              data: (list) {
+                var filtered = list.where((e) =>
+                  e.status != EquipmentStatus.retired &&
+                  (_statusFilter == null || e.status == _statusFilter) &&
+                  (_areaFilter == null || e.areaId == _areaFilter)
+                ).toList();
+                if (filtered.isEmpty) {
+                  return const Center(child: Text('No equipment matches filters.'));
+                }
+                // Group by type.
+                final byType = <EquipmentType, List<Equipment>>{};
+                for (final e in filtered) {
+                  byType.putIfAbsent(e.type, () => []).add(e);
+                }
+                final types = byType.keys.toList()..sort((a, b) => a.index.compareTo(b.index));
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: types.length,
+                  itemBuilder: (_, ti) {
+                    final t = types[ti];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 4),
+                          child: Text(t.label,
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        ...byType[t]!.map((eq) => _EquipmentCard(
+                          eq: eq, role: role, farmId: farmId,
+                          userId: user.uid,
+                        )),
+                      ],
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EquipmentCard extends ConsumerWidget {
+  const _EquipmentCard({required this.eq, required this.role, required this.farmId, required this.userId});
+  final Equipment eq;
+  final Role role;
+  final String farmId;
+  final String userId;
+
+  Color _statusColor(EquipmentStatus s) {
+    switch (s) {
+      case EquipmentStatus.inUse: return Colors.green;
+      case EquipmentStatus.available: return Colors.grey;
+      case EquipmentStatus.needsRepair: return Colors.red;
+      case EquipmentStatus.retired: return Colors.black26;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canToggle = PermissionService.canQuickToggleEquipmentStatus(role);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    return Card(
+      child: ListTile(
+        title: Text(eq.name),
+        subtitle: Text(eq.areaId == null ? eq.type.label : '${eq.type.label} · area ${eq.areaId}'),
+        trailing: GestureDetector(
+          onTap: canToggle ? () => ref.read(equipmentRepositoryProvider).quickToggleStatus(
+                farmId: farmId, equipmentId: eq.id,
+                actorUserId: userId, actorDisplayName: actorName,
+              ) : null,
+          child: Chip(
+            label: Text(eq.status.label,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            backgroundColor: _statusColor(eq.status),
+          ),
+        ),
+        onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => EquipmentDetailScreen(equipmentId: eq.id))),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 5.7: Add/Edit equipment screen**
+
+`lib/src/features/equipment/presentation/add_edit_equipment_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../areas/application/area_providers.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/equipment_providers.dart';
+import '../domain/equipment.dart';
+
+class AddEditEquipmentScreen extends ConsumerStatefulWidget {
+  const AddEditEquipmentScreen({super.key, this.existing});
+  final Equipment? existing;
+  @override
+  ConsumerState<AddEditEquipmentScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<AddEditEquipmentScreen> {
+  late final TextEditingController _name;
+  late final TextEditingController _cost;
+  late final TextEditingController _notes;
+  late EquipmentType _type;
+  late EquipmentStatus _status;
+  String? _areaId;
+  DateTime? _purchaseDate;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _name = TextEditingController(text: e?.name ?? '');
+    _cost = TextEditingController(text: e?.purchaseCostPhp?.toStringAsFixed(0) ?? '');
+    _notes = TextEditingController(text: e?.notes ?? '');
+    _type = e?.type ?? EquipmentType.other;
+    _status = e?.status ?? EquipmentStatus.available;
+    _areaId = e?.areaId;
+    _purchaseDate = e?.purchaseDate?.toDate();
+  }
+
+  @override
+  void dispose() { _name.dispose(); _cost.dispose(); _notes.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_name.text.trim().isEmpty) return;
+    setState(() => _busy = true);
+    final repo = ref.read(equipmentRepositoryProvider);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    final cost = double.tryParse(_cost.text);
+    final purchase = _purchaseDate == null ? null : Timestamp.fromDate(_purchaseDate!);
+    try {
+      if (widget.existing == null) {
+        await repo.createEquipment(
+          farmId: farmId, name: _name.text, type: _type, areaId: _areaId,
+          status: _status, purchaseDate: purchase, purchaseCostPhp: cost,
+          photoUrl: null, notes: _notes.text,
+          actorUserId: user.uid, actorDisplayName: actorName,
+        );
+      } else {
+        await repo.updateEquipment(
+          farmId: farmId, equipmentId: widget.existing!.id,
+          name: _name.text, type: _type, areaId: _areaId, status: _status,
+          purchaseDate: purchase, purchaseCostPhp: cost,
+          photoUrl: widget.existing!.photoUrl, notes: _notes.text,
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final areasAsync = farmId != null
+        ? ref.watch(areasStreamProvider(farmId))
+        : const AsyncValue<List>.data([]);
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.existing == null ? 'New equipment' : 'Edit equipment')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<EquipmentType>(
+              value: _type,
+              decoration: const InputDecoration(labelText: 'Type'),
+              items: EquipmentType.values.map((t) =>
+                DropdownMenuItem(value: t, child: Text(t.label))).toList(),
+              onChanged: (v) => setState(() => _type = v ?? EquipmentType.other),
+            ),
+            const SizedBox(height: 12),
+            areasAsync.when(
+              data: (areas) => DropdownButtonFormField<String?>(
+                value: _areaId,
+                decoration: const InputDecoration(labelText: 'Area (optional)'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('— no area —')),
+                  ...areas.map((a) =>
+                    DropdownMenuItem(value: a.id as String?, child: Text(a.name))),
+                ],
+                onChanged: (v) => setState(() => _areaId = v),
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => Text('Areas error: $e'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<EquipmentStatus>(
+              value: _status,
+              decoration: const InputDecoration(labelText: 'Status'),
+              items: EquipmentStatus.values.map((s) =>
+                DropdownMenuItem(value: s, child: Text(s.label))).toList(),
+              onChanged: (v) => setState(() => _status = v ?? EquipmentStatus.available),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Purchase date (optional)'),
+              subtitle: Text(_purchaseDate?.toLocal().toString().split(' ')[0] ?? '—'),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context, initialDate: _purchaseDate ?? DateTime.now(),
+                  firstDate: DateTime(2000), lastDate: DateTime.now(),
+                );
+                if (picked != null) setState(() => _purchaseDate = picked);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _cost,
+              decoration: const InputDecoration(labelText: 'Purchase cost (PHP, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              maxLines: 3),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 5.8: Equipment detail screen + Log maintenance screen**
+
+`lib/src/features/equipment/presentation/equipment_detail_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/permissions/role.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/equipment_providers.dart';
+import 'add_edit_equipment_screen.dart';
+import 'log_maintenance_screen.dart';
+
+class EquipmentDetailScreen extends ConsumerWidget {
+  const EquipmentDetailScreen({super.key, required this.equipmentId});
+  final String equipmentId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return const SizedBox.shrink();
+    final eqAsync = ref.watch(equipmentByIdProvider((farmId: farmId, equipmentId: equipmentId)));
+    final maintAsync = ref.watch(maintenanceStreamProvider((farmId: farmId, equipmentId: equipmentId)));
+    final role = ref.watch(memberForUserProvider((farmId: farmId, userId: user.uid)))
+        .asData?.value?.role ?? Role.worker;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Equipment'),
+        actions: [
+          if (PermissionService.canEditEquipment(role))
+            eqAsync.maybeWhen(
+              data: (eq) => eq == null ? const SizedBox.shrink() : IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => AddEditEquipmentScreen(existing: eq))),
+              ),
+              orElse: () => const SizedBox.shrink(),
+            ),
+        ],
+      ),
+      floatingActionButton: PermissionService.canLogMaintenance(role)
+          ? FloatingActionButton.extended(
+              icon: const Icon(Icons.build),
+              label: const Text('Log maintenance'),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => LogMaintenanceScreen(equipmentId: equipmentId))),
+            )
+          : null,
+      body: eqAsync.when(
+        data: (eq) {
+          if (eq == null) return const Center(child: Text('Not found'));
+          final maintList = maintAsync.asData?.value ?? const [];
+          final totalCost = maintList.fold<double>(0, (sum, m) => sum + (m.costPhp ?? 0));
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(eq.name, style: Theme.of(context).textTheme.headlineSmall),
+                      const SizedBox(height: 8),
+                      Text('Type: ${eq.type.label}'),
+                      Text('Status: ${eq.status.label}'),
+                      if (eq.purchaseDate != null)
+                        Text('Purchased: ${DateFormat.yMMMd().format(eq.purchaseDate!.toDate())}'),
+                      if (eq.purchaseCostPhp != null)
+                        Text('Purchase cost: ₱${eq.purchaseCostPhp!.toStringAsFixed(0)}'),
+                      if (eq.notes != null) ...[
+                        const SizedBox(height: 8),
+                        Text(eq.notes!),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Maintenance history',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Text('Total: ₱${totalCost.toStringAsFixed(0)}'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              maintAsync.when(
+                data: (list) {
+                  if (list.isEmpty) return const Text('No maintenance logged yet.');
+                  return Column(
+                    children: list.map((m) => Card(
+                      child: ListTile(
+                        leading: Icon(_iconFor(m.type.value)),
+                        title: Text(m.type.label),
+                        subtitle: Text(DateFormat.yMMMd().format(m.date.toDate()) +
+                            (m.performedBy != null ? ' · ${m.performedBy}' : '')),
+                        trailing: m.costPhp != null
+                            ? Text('₱${m.costPhp!.toStringAsFixed(0)}')
+                            : null,
+                      ),
+                    )).toList(),
+                  );
+                },
+                loading: () => const CircularProgressIndicator(),
+                error: (e, _) => Text('$e'),
+              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+      ),
+    );
+  }
+
+  IconData _iconFor(String t) {
+    switch (t) {
+      case 'preventive': return Icons.check_circle;
+      case 'repair': return Icons.build;
+      case 'inspection': return Icons.visibility;
+      default: return Icons.help_outline;
+    }
+  }
+}
+```
+
+`lib/src/features/equipment/presentation/log_maintenance_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/equipment_providers.dart';
+import '../domain/maintenance_record.dart';
+
+class LogMaintenanceScreen extends ConsumerStatefulWidget {
+  const LogMaintenanceScreen({super.key, required this.equipmentId});
+  final String equipmentId;
+  @override
+  ConsumerState<LogMaintenanceScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<LogMaintenanceScreen> {
+  final _performedBy = TextEditingController();
+  final _parts = TextEditingController();
+  final _cost = TextEditingController();
+  final _notes = TextEditingController();
+  MaintenanceType _type = MaintenanceType.repair;
+  DateTime _date = DateTime.now();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _performedBy.dispose(); _parts.dispose(); _cost.dispose(); _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    setState(() => _busy = true);
+    final repo = ref.read(equipmentRepositoryProvider);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    final eq = await ref.read(equipmentByIdProvider(
+        (farmId: farmId, equipmentId: widget.equipmentId)).future);
+    if (eq == null) {
+      setState(() => _busy = false);
+      return;
+    }
+    try {
+      await repo.logMaintenance(
+        farmId: farmId, equipmentId: widget.equipmentId, equipmentName: eq.name,
+        type: _type, date: Timestamp.fromDate(_date),
+        performedBy: _performedBy.text.trim().isEmpty ? null : _performedBy.text.trim(),
+        partsReplaced: _parts.text.trim().isEmpty ? null : _parts.text.trim(),
+        costPhp: double.tryParse(_cost.text),
+        photoUrls: const [],  // Photo capture comes in Task 9.
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid, actorDisplayName: actorName,
+      );
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Log maintenance')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<MaintenanceType>(
+              segments: MaintenanceType.values.map((t) =>
+                ButtonSegment(value: t, label: Text(t.label))).toList(),
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Date'),
+              subtitle: Text(_date.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context, initialDate: _date,
+                  firstDate: DateTime(2020), lastDate: DateTime.now(),
+                );
+                if (picked != null) setState(() => _date = picked);
+              },
+            ),
+            TextField(controller: _performedBy,
+              decoration: const InputDecoration(labelText: 'Performed by (technician name, optional)')),
+            const SizedBox(height: 12),
+            TextField(controller: _parts,
+              decoration: const InputDecoration(labelText: 'Parts replaced (optional)')),
+            const SizedBox(height: 12),
+            TextField(controller: _cost,
+              decoration: const InputDecoration(labelText: 'Cost (PHP, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 5.9: Wire route + run tests + manual smoke**
+
+In `app_router.dart`, add:
+
+```dart
+GoRoute(path: '/equipment', builder: (c, s) => const EquipmentListScreen()),
+```
+
+Import `import '../features/equipment/presentation/equipment_list_screen.dart';`
+
+```bash
+flutter analyze
+flutter test
+flutter run -d <device>
+```
+
+Manual: navigate to `/equipment`, add a "Tunnel Fan A" (Ventilation, area = your first area, status = In use, cost = 25000). Verify it appears, tap the status chip → cycles to Available → Needs repair → In use. Open detail → Log maintenance (Repair, parts = belt, cost = 500) → returns to detail with one record.
+
+- [ ] **Step 5.10: Commit**
+
+```bash
+git add -A
+git commit -m "feat(equipment): CRUD + maintenance log with status quick-toggle
+
+- Equipment + MaintenanceRecord models, status enum with cyclic .next
+- EquipmentRepository writes activity entries in same batch
+- List grouped by type, filter chips for needs-repair/in-use/available
+- Quick-toggle status by tapping chip
+- Detail screen with maintenance history + cost total"
+```
+
+---
+
+_(Tasks 6–17 continue in subsequent commits to this file.)_

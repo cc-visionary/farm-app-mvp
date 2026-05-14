@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/widgets/splash_screen.dart';
+import '../features/areas/presentation/areas_list_screen.dart';
 import '../features/authentication/application/auth_providers.dart';
 import '../features/authentication/presentation/login_screen.dart';
 import '../features/authentication/presentation/signup_screen.dart';
@@ -55,6 +56,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/setup', builder: (c, s) => const FarmSetupScreen()),
       GoRoute(path: '/create-farm', builder: (c, s) => const CreateFarmScreen()),
       GoRoute(path: '/team', builder: (c, s) => const TeamManagementScreen()),
+      GoRoute(path: '/areas', builder: (c, s) => const AreasListScreen()),
       GoRoute(
         path: '/',
         builder: (c, s) => const Scaffold(

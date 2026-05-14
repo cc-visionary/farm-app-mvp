@@ -4170,4 +4170,2375 @@ git commit -m "feat(equipment): CRUD + maintenance log with status quick-toggle
 
 ---
 
-_(Tasks 6–17 continue in subsequent commits to this file.)_
+---
+
+## Task 6: Pig Model + Pigs List + Pig Detail (read-only)
+
+**Goal:** Create the swine-specific `Pig` domain entity, `PigRepository`, and the list + detail screens. Add/Edit Pig comes in Task 7. Detail screen is initially read-only; "Log event" buttons are placeholders to be wired in Tasks 8–10.
+
+**Files:**
+- Create:
+  - `lib/src/features/pigs/domain/pig.dart`
+  - `lib/src/features/pigs/data/pig_repository.dart`
+  - `lib/src/features/pigs/application/pig_providers.dart`
+  - `lib/src/features/pigs/presentation/pigs_list_screen.dart`
+  - `lib/src/features/pigs/presentation/pig_detail_screen.dart`
+  - `test/features/pigs/domain/pig_test.dart`
+  - `test/features/pigs/data/pig_repository_test.dart`
+
+### Steps
+
+- [ ] **Step 6.1: Test — Pig model**
+
+`test/features/pigs/domain/pig_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/pigs/domain/pig.dart';
+
+void main() {
+  test('PigSex.fromString', () {
+    expect(PigSex.fromString('male'), PigSex.male);
+    expect(PigSex.fromString('female'), PigSex.female);
+    expect(PigSex.fromString('x'), PigSex.female);  // default
+  });
+
+  test('PigStage.fromString resolves all', () {
+    for (final s in PigStage.values) {
+      expect(PigStage.fromString(s.value), s);
+    }
+  });
+
+  test('PigStatus.fromString resolves all', () {
+    for (final s in PigStatus.values) {
+      expect(PigStatus.fromString(s.value), s);
+    }
+  });
+
+  test('Pig round-trips through Firestore', () async {
+    final f = FakeFirebaseFirestore();
+    final birth = Timestamp.fromMillisecondsSinceEpoch(1700000000000);
+    final created = Timestamp.fromMillisecondsSinceEpoch(1700100000000);
+    await f.collection('farms').doc('f1').collection('pigs').doc('p1').set({
+      'tagId': 'SOW-001', 'sex': 'female', 'breed': 'Yorkshire',
+      'birthDate': birth, 'sireId': 'BOAR-1', 'damId': 'SOW-PARENT-1',
+      'stage': 'sow', 'status': 'active',
+      'currentAreaId': 'a1', 'currentPenId': 'pen-1',
+      'currentWeight': 220.5,
+      'photoUrl': 'https://x/p.jpg', 'notes': null,
+      'createdBy': 'u1', 'createdAt': created, 'updatedAt': created,
+    });
+    final doc = await f.collection('farms').doc('f1').collection('pigs').doc('p1').get();
+    final pig = Pig.fromFirestore(doc, farmId: 'f1');
+    expect(pig.tagId, 'SOW-001');
+    expect(pig.sex, PigSex.female);
+    expect(pig.stage, PigStage.sow);
+    expect(pig.status, PigStatus.active);
+    expect(pig.currentWeight, 220.5);
+    expect(pig.sireId, 'BOAR-1');
+  });
+
+  test('Pig age helper produces sensible buckets', () {
+    final now = DateTime(2026, 6, 1);
+    final p1 = _pig(birthDate: DateTime(2025, 6, 1));    // 12 months
+    final p2 = _pig(birthDate: DateTime(2026, 5, 1));    // ~30 days
+    final p3 = _pig(birthDate: DateTime(2026, 5, 25));   // ~7 days
+
+    expect(p1.ageString(now), '1 yr');
+    expect(p2.ageString(now), '1 mo');
+    expect(p3.ageString(now), '1 wk');
+  });
+}
+
+Pig _pig({required DateTime birthDate}) => Pig(
+  id: 'x', farmId: 'f', tagId: 't', sex: PigSex.female, breed: 'Y',
+  birthDate: Timestamp.fromDate(birthDate),
+  sireId: null, damId: null,
+  stage: PigStage.sow, status: PigStatus.active,
+  currentAreaId: 'a', currentPenId: null,
+  currentWeight: null, weightUpdatedAt: null,
+  photoUrl: null, notes: null,
+  createdBy: 'u', createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+);
+```
+
+- [ ] **Step 6.2: Implement Pig model**
+
+`lib/src/features/pigs/domain/pig.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum PigSex {
+  male('male', 'Male'),
+  female('female', 'Female');
+
+  const PigSex(this.value, this.label);
+  final String value;
+  final String label;
+  static PigSex fromString(String s) =>
+      PigSex.values.firstWhere((e) => e.value == s, orElse: () => PigSex.female);
+}
+
+enum PigStage {
+  suckling('suckling', 'Suckling'),
+  weaner('weaner', 'Weaner'),
+  grower('grower', 'Grower'),
+  finisher('finisher', 'Finisher'),
+  gilt('gilt', 'Gilt'),
+  sow('sow', 'Sow'),
+  boar('boar', 'Boar');
+
+  const PigStage(this.value, this.label);
+  final String value;
+  final String label;
+  static PigStage fromString(String s) =>
+      PigStage.values.firstWhere((e) => e.value == s, orElse: () => PigStage.grower);
+}
+
+enum PigStatus {
+  active('active', 'Active'),
+  sold('sold', 'Sold'),
+  culled('culled', 'Culled'),
+  deceased('deceased', 'Deceased');
+
+  const PigStatus(this.value, this.label);
+  final String value;
+  final String label;
+  static PigStatus fromString(String s) =>
+      PigStatus.values.firstWhere((e) => e.value == s, orElse: () => PigStatus.active);
+}
+
+class Pig {
+  final String id;
+  final String farmId;
+  final String tagId;
+  final PigSex sex;
+  final String breed;
+  final Timestamp birthDate;
+  final String? sireId;
+  final String? damId;
+  final PigStage stage;
+  final PigStatus status;
+  final String currentAreaId;
+  final String? currentPenId;
+  final double? currentWeight;
+  final Timestamp? weightUpdatedAt;
+  final String? photoUrl;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+  final Timestamp updatedAt;
+
+  const Pig({
+    required this.id,
+    required this.farmId,
+    required this.tagId,
+    required this.sex,
+    required this.breed,
+    required this.birthDate,
+    required this.sireId,
+    required this.damId,
+    required this.stage,
+    required this.status,
+    required this.currentAreaId,
+    required this.currentPenId,
+    required this.currentWeight,
+    required this.weightUpdatedAt,
+    required this.photoUrl,
+    required this.notes,
+    required this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory Pig.fromFirestore(DocumentSnapshot doc, {required String farmId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return Pig(
+      id: doc.id,
+      farmId: farmId,
+      tagId: d['tagId'] as String,
+      sex: PigSex.fromString(d['sex'] as String),
+      breed: d['breed'] as String? ?? '',
+      birthDate: d['birthDate'] as Timestamp,
+      sireId: d['sireId'] as String?,
+      damId: d['damId'] as String?,
+      stage: PigStage.fromString(d['stage'] as String? ?? 'grower'),
+      status: PigStatus.fromString(d['status'] as String? ?? 'active'),
+      currentAreaId: d['currentAreaId'] as String? ?? '',
+      currentPenId: d['currentPenId'] as String?,
+      currentWeight: (d['currentWeight'] as num?)?.toDouble(),
+      weightUpdatedAt: d['weightUpdatedAt'] as Timestamp?,
+      photoUrl: d['photoUrl'] as String?,
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+      updatedAt: d['updatedAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'tagId': tagId,
+    'sex': sex.value,
+    'breed': breed,
+    'birthDate': birthDate,
+    if (sireId != null) 'sireId': sireId,
+    if (damId != null) 'damId': damId,
+    'stage': stage.value,
+    'status': status.value,
+    'currentAreaId': currentAreaId,
+    if (currentPenId != null) 'currentPenId': currentPenId,
+    if (currentWeight != null) 'currentWeight': currentWeight,
+    if (weightUpdatedAt != null) 'weightUpdatedAt': weightUpdatedAt,
+    if (photoUrl != null) 'photoUrl': photoUrl,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
+
+  String ageString(DateTime now) {
+    final diff = now.difference(birthDate.toDate());
+    final days = diff.inDays;
+    if (days >= 365) return '${days ~/ 365} yr';
+    if (days >= 30) return '${days ~/ 30} mo';
+    if (days >= 7) return '${days ~/ 7} wk';
+    return '$days d';
+  }
+
+  bool get isBreeder => stage == PigStage.sow || stage == PigStage.gilt || stage == PigStage.boar;
+}
+```
+
+- [ ] **Step 6.3: Test — PigRepository**
+
+`test/features/pigs/data/pig_repository_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/activity/data/activity_repository.dart';
+import 'package:farm_app/src/features/pigs/data/pig_repository.dart';
+import 'package:farm_app/src/features/pigs/domain/pig.dart';
+
+void main() {
+  PigRepository newRepo() {
+    final f = FakeFirebaseFirestore();
+    return PigRepository(f, ActivityRepository(f));
+  }
+
+  test('createPig writes and emits activity', () async {
+    final repo = newRepo();
+    final id = await repo.createPig(
+      farmId: 'f1', tagId: 'SOW-001', sex: PigSex.female, breed: 'Yorkshire',
+      birthDate: Timestamp.fromMillisecondsSinceEpoch(1700000000000),
+      sireId: null, damId: null, stage: PigStage.sow, currentAreaId: 'a1',
+      currentPenId: null, currentWeight: null, photoUrl: null, notes: null,
+      actorUserId: 'u1', actorDisplayName: 'Juan',
+    );
+    expect(id, isNotEmpty);
+  });
+
+  test('updatePig changes stage', () async {
+    final repo = newRepo();
+    final id = await repo.createPig(
+      farmId: 'f1', tagId: 'P1', sex: PigSex.female, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null,
+      stage: PigStage.gilt, currentAreaId: 'a1', currentPenId: null,
+      currentWeight: null, photoUrl: null, notes: null,
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    await repo.updatePig(
+      farmId: 'f1', pigId: id, tagId: 'P1', sex: PigSex.female, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null,
+      stage: PigStage.sow, currentAreaId: 'a1', currentPenId: null,
+      currentWeight: null, photoUrl: null, notes: null,
+    );
+    final pig = await repo.streamPigById(farmId: 'f1', pigId: id).first;
+    expect(pig!.stage, PigStage.sow);
+  });
+
+  test('movePig updates area + pen + writes activity', () async {
+    final repo = newRepo();
+    final id = await repo.createPig(
+      farmId: 'f1', tagId: 'P1', sex: PigSex.male, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null,
+      stage: PigStage.grower, currentAreaId: 'a1', currentPenId: 'pen1',
+      currentWeight: null, photoUrl: null, notes: null,
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    await repo.movePig(
+      farmId: 'f1', pigId: id, tagId: 'P1',
+      newAreaId: 'a2', newPenId: 'pen2',
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    final pig = await repo.streamPigById(farmId: 'f1', pigId: id).first;
+    expect(pig!.currentAreaId, 'a2');
+    expect(pig.currentPenId, 'pen2');
+  });
+
+  test('logWeight updates currentWeight + activity', () async {
+    final repo = newRepo();
+    final id = await repo.createPig(
+      farmId: 'f1', tagId: 'X', sex: PigSex.male, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null,
+      stage: PigStage.grower, currentAreaId: 'a', currentPenId: null,
+      currentWeight: null, photoUrl: null, notes: null,
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    await repo.logWeight(
+      farmId: 'f1', pigId: id, tagId: 'X', weight: 45.5,
+      actorUserId: 'u', actorDisplayName: 'J',
+    );
+    final pig = await repo.streamPigById(farmId: 'f1', pigId: id).first;
+    expect(pig!.currentWeight, 45.5);
+  });
+
+  test('streamPigs returns all active by default', () async {
+    final repo = newRepo();
+    await repo.createPig(farmId: 'f1', tagId: 'A', sex: PigSex.male, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null, stage: PigStage.grower,
+      currentAreaId: 'a', currentPenId: null, currentWeight: null,
+      photoUrl: null, notes: null, actorUserId: 'u', actorDisplayName: 'J');
+    final id = await repo.createPig(farmId: 'f1', tagId: 'B', sex: PigSex.female, breed: 'X',
+      birthDate: Timestamp.now(), sireId: null, damId: null, stage: PigStage.sow,
+      currentAreaId: 'a', currentPenId: null, currentWeight: null,
+      photoUrl: null, notes: null, actorUserId: 'u', actorDisplayName: 'J');
+    await repo.setStatus(farmId: 'f1', pigId: id, tagId: 'B', status: PigStatus.sold,
+      actorUserId: 'u', actorDisplayName: 'J');
+    final list = await repo.streamPigs('f1').first;
+    expect(list.length, 2);
+    final activeOnly = list.where((p) => p.status == PigStatus.active).toList();
+    expect(activeOnly, hasLength(1));
+  });
+}
+```
+
+- [ ] **Step 6.4: Implement PigRepository**
+
+`lib/src/features/pigs/data/pig_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../domain/pig.dart';
+
+class PigRepository {
+  PigRepository(this._firestore, this._activity);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('pigs');
+
+  Future<String> createPig({
+    required String farmId,
+    required String tagId,
+    required PigSex sex,
+    required String breed,
+    required Timestamp birthDate,
+    required String? sireId,
+    required String? damId,
+    required PigStage stage,
+    required String currentAreaId,
+    required String? currentPenId,
+    required double? currentWeight,
+    required String? photoUrl,
+    required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final ref = _col(farmId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'tagId': tagId.trim(),
+      'sex': sex.value,
+      'breed': breed.trim(),
+      'birthDate': birthDate,
+      if (sireId != null) 'sireId': sireId,
+      if (damId != null) 'damId': damId,
+      'stage': stage.value,
+      'status': 'active',
+      'currentAreaId': currentAreaId,
+      if (currentPenId != null) 'currentPenId': currentPenId,
+      if (currentWeight != null) 'currentWeight': currentWeight,
+      if (currentWeight != null) 'weightUpdatedAt': FieldValue.serverTimestamp(),
+      if (photoUrl != null) 'photoUrl': photoUrl,
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'pig_added', entityType: 'pig', entityId: ref.id,
+      areaId: currentAreaId,
+      summary: '$actorDisplayName added pig $tagId',
+    );
+    await batch.commit();
+    return ref.id;
+  }
+
+  Future<void> updatePig({
+    required String farmId,
+    required String pigId,
+    required String tagId,
+    required PigSex sex,
+    required String breed,
+    required Timestamp birthDate,
+    required String? sireId,
+    required String? damId,
+    required PigStage stage,
+    required String currentAreaId,
+    required String? currentPenId,
+    required double? currentWeight,
+    required String? photoUrl,
+    required String? notes,
+  }) async {
+    await _col(farmId).doc(pigId).update({
+      'tagId': tagId.trim(),
+      'sex': sex.value,
+      'breed': breed.trim(),
+      'birthDate': birthDate,
+      'sireId': sireId,
+      'damId': damId,
+      'stage': stage.value,
+      'currentAreaId': currentAreaId,
+      'currentPenId': currentPenId,
+      if (currentWeight != null) 'currentWeight': currentWeight,
+      'photoUrl': photoUrl,
+      'notes': notes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> movePig({
+    required String farmId, required String pigId, required String tagId,
+    required String newAreaId, required String? newPenId,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(pigId), {
+      'currentAreaId': newAreaId,
+      'currentPenId': newPenId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'pig_moved', entityType: 'pig', entityId: pigId,
+      areaId: newAreaId,
+      summary: '$actorDisplayName moved pig $tagId to area $newAreaId',
+    );
+    await batch.commit();
+  }
+
+  Future<void> logWeight({
+    required String farmId, required String pigId, required String tagId,
+    required double weight,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(pigId), {
+      'currentWeight': weight,
+      'weightUpdatedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'weight_logged', entityType: 'pig', entityId: pigId,
+      summary: '$actorDisplayName logged weight $weight kg for $tagId',
+    );
+    await batch.commit();
+  }
+
+  Future<void> setStatus({
+    required String farmId, required String pigId, required String tagId,
+    required PigStatus status,
+    required String actorUserId, required String actorDisplayName,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(pigId), {
+      'status': status.value, 'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'pig_status_changed', entityType: 'pig', entityId: pigId,
+      summary: '$actorDisplayName marked $tagId as ${status.label}',
+    );
+    await batch.commit();
+  }
+
+  Stream<List<Pig>> streamPigs(String farmId) {
+    return _col(farmId).snapshots().map((s) =>
+        s.docs.map((d) => Pig.fromFirestore(d, farmId: farmId)).toList());
+  }
+
+  Stream<Pig?> streamPigById({required String farmId, required String pigId}) {
+    return _col(farmId).doc(pigId).snapshots().map(
+      (d) => d.exists ? Pig.fromFirestore(d, farmId: farmId) : null,
+    );
+  }
+}
+```
+
+- [ ] **Step 6.5: Providers**
+
+`lib/src/features/pigs/application/pig_providers.dart`:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../activity/application/activity_providers.dart';
+import '../data/pig_repository.dart';
+import '../domain/pig.dart';
+
+final pigRepositoryProvider = Provider<PigRepository>(
+  (ref) => PigRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+  ),
+);
+
+final pigsStreamProvider =
+    StreamProvider.family<List<Pig>, String>((ref, farmId) {
+  return ref.watch(pigRepositoryProvider).streamPigs(farmId);
+});
+
+final pigByIdProvider =
+    StreamProvider.family<Pig?, ({String farmId, String pigId})>((ref, args) {
+  return ref.watch(pigRepositoryProvider).streamPigById(
+        farmId: args.farmId, pigId: args.pigId,
+      );
+});
+```
+
+- [ ] **Step 6.6: Pigs list screen**
+
+`lib/src/features/pigs/presentation/pigs_list_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../team/application/team_providers.dart';
+import '../application/pig_providers.dart';
+import '../domain/pig.dart';
+import 'pig_detail_screen.dart';
+
+class PigsListScreen extends ConsumerStatefulWidget {
+  const PigsListScreen({super.key});
+  @override
+  ConsumerState<PigsListScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<PigsListScreen> {
+  final _search = TextEditingController();
+  final Set<PigStage> _stageFilter = {};
+  bool _showInactive = false;
+  bool _onlyMyAreas = false;
+
+  @override
+  void dispose() { _search.dispose(); super.dispose(); }
+
+  List<Pig> _filter(List<Pig> all, List<String> assignedAreaIds) {
+    final q = _search.text.trim().toLowerCase();
+    return all.where((p) {
+      if (!_showInactive && p.status != PigStatus.active) return false;
+      if (_stageFilter.isNotEmpty && !_stageFilter.contains(p.stage)) return false;
+      if (_onlyMyAreas && assignedAreaIds.isNotEmpty &&
+          !assignedAreaIds.contains(p.currentAreaId)) return false;
+      if (q.isNotEmpty && !p.tagId.toLowerCase().contains(q)) return false;
+      return true;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return const SizedBox.shrink();
+    final pigsAsync = ref.watch(pigsStreamProvider(farmId));
+    final member = ref.watch(memberForUserProvider(
+        (farmId: farmId, userId: user.uid))).asData?.value;
+    final assigned = member?.assignedAreaIds ?? const <String>[];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pigs'),
+        actions: [
+          IconButton(
+            icon: Icon(_showInactive ? Icons.visibility : Icons.visibility_off),
+            tooltip: _showInactive ? 'Hide inactive' : 'Show inactive',
+            onPressed: () => setState(() => _showInactive = !_showInactive),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Search by tag ID',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 44,
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              scrollDirection: Axis.horizontal,
+              children: [
+                ...PigStage.values.map((s) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(s.label),
+                    selected: _stageFilter.contains(s),
+                    onSelected: (sel) => setState(() =>
+                      sel ? _stageFilter.add(s) : _stageFilter.remove(s)),
+                  ),
+                )),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, left: 4),
+                  child: FilterChip(
+                    label: const Text('My areas only'),
+                    selected: _onlyMyAreas,
+                    onSelected: (sel) => setState(() => _onlyMyAreas = sel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: pigsAsync.when(
+              data: (all) {
+                final list = _filter(all, assigned);
+                if (list.isEmpty) {
+                  return const Center(child: Text('No pigs match the current filters.'));
+                }
+                // Group by stage with collapsible sections.
+                final byStage = <PigStage, List<Pig>>{};
+                for (final p in list) {
+                  byStage.putIfAbsent(p.stage, () => []).add(p);
+                }
+                final stages = byStage.keys.toList()
+                  ..sort((a, b) => a.index.compareTo(b.index));
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: stages.length,
+                  itemBuilder: (_, si) {
+                    final s = stages[si];
+                    final pigs = byStage[s]!;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 4, left: 4),
+                          child: Text('${s.label} · ${pigs.length}',
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        ...pigs.map((p) => _PigCard(pig: p)),
+                      ],
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PigCard extends StatelessWidget {
+  const _PigCard({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: pig.sex == PigSex.female ? Colors.pink.shade100 : Colors.blue.shade100,
+          child: Text(pig.sex == PigSex.female ? '♀' : '♂'),
+        ),
+        title: Text(pig.tagId, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text('${pig.breed} · ${pig.stage.label} · ${pig.ageString(now)}'),
+        trailing: pig.currentWeight != null
+            ? Text('${pig.currentWeight!.toStringAsFixed(0)} kg')
+            : null,
+        onTap: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => PigDetailScreen(pigId: pig.id),
+        )),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 6.7: Pig detail screen (read-only)**
+
+`lib/src/features/pigs/presentation/pig_detail_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/pig_providers.dart';
+import '../domain/pig.dart';
+
+class PigDetailScreen extends ConsumerWidget {
+  const PigDetailScreen({super.key, required this.pigId});
+  final String pigId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final pigAsync = ref.watch(pigByIdProvider((farmId: farmId, pigId: pigId)));
+
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: pigAsync.maybeWhen(
+            data: (p) => Text(p?.tagId ?? 'Pig'),
+            orElse: () => const Text('Pig'),
+          ),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Profile'),
+              Tab(text: 'Breeding'),
+              Tab(text: 'Health'),
+              Tab(text: 'Lineage'),
+            ],
+          ),
+        ),
+        body: pigAsync.when(
+          data: (pig) {
+            if (pig == null) return const Center(child: Text('Not found'));
+            return TabBarView(
+              children: [
+                _ProfileTab(pig: pig),
+                _PlaceholderTab(text: 'Breeding history — wired in Task 8'),
+                _PlaceholderTab(text: 'Health records — wired in Task 10'),
+                _LineageTab(pig: pig),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileTab extends StatelessWidget {
+  const _ProfileTab({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (pig.photoUrl != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(pig.photoUrl!, height: 200, fit: BoxFit.cover),
+          ),
+        const SizedBox(height: 16),
+        _row('Tag ID', pig.tagId),
+        _row('Sex', pig.sex.label),
+        _row('Breed', pig.breed),
+        _row('Stage', pig.stage.label),
+        _row('Status', pig.status.label),
+        _row('Born', DateFormat.yMMMd().format(pig.birthDate.toDate())),
+        _row('Age', pig.ageString(now)),
+        if (pig.currentWeight != null)
+          _row('Current weight', '${pig.currentWeight!.toStringAsFixed(1)} kg'),
+        _row('Area', pig.currentAreaId),
+        if (pig.currentPenId != null) _row('Pen', pig.currentPenId!),
+        if (pig.notes != null) _row('Notes', pig.notes!),
+      ],
+    );
+  }
+
+  Widget _row(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        SizedBox(width: 110, child: Text(label, style: const TextStyle(color: Colors.grey))),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
+}
+
+class _LineageTab extends ConsumerWidget {
+  const _LineageTab({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text('Parents', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Card(child: ListTile(
+          title: const Text('Sire (father)'),
+          subtitle: Text(pig.sireId ?? '—'),
+        )),
+        Card(child: ListTile(
+          title: const Text('Dam (mother)'),
+          subtitle: Text(pig.damId ?? '—'),
+        )),
+        // Offspring discovery is a derived query — wired in Task 8 after breeding records exist.
+      ],
+    );
+  }
+}
+
+class _PlaceholderTab extends StatelessWidget {
+  const _PlaceholderTab({required this.text});
+  final String text;
+  @override
+  Widget build(BuildContext context) => Center(child: Text(text));
+}
+```
+
+- [ ] **Step 6.8: Wire routes + verify**
+
+In `app_router.dart` add:
+
+```dart
+GoRoute(path: '/pigs', builder: (c, s) => const PigsListScreen()),
+```
+
+Import the screen. Add a temporary button to the placeholder home that goes to `/pigs` for testing.
+
+Seed at least 2 pigs manually via Firestore console (or wait for Task 7's UI). Verify list groups by stage, search filters, "My areas only" toggle respects assigned areas. Open detail — Profile and Lineage tabs render; Breeding/Health show the placeholder.
+
+```bash
+flutter analyze
+flutter test
+flutter run -d <device>
+```
+
+- [ ] **Step 6.9: Commit**
+
+```bash
+git add -A
+git commit -m "feat(pigs): Pig domain, repository, list, and read-only detail
+
+- Pig model with sex/stage/status enums, age helper, lineage fields
+- PigRepository: create/update/move/logWeight/setStatus with activity entries
+- Pigs list with stage filter chips, tagId search, my-areas filter,
+  collapsible stage sections
+- Detail screen with 4 tabs (Profile/Breeding/Health/Lineage);
+  Breeding/Health placeholders pending later tasks"
+```
+
+---
+
+## Task 7: Photo Service + Add/Edit Pig with Photo
+
+**Goal:** Build the shared photo capture/upload service used across pigs, health records, equipment, and mortality. Wire it into Add/Edit Pig as the first consumer.
+
+**Files:**
+- Create:
+  - `lib/src/features/media/photo_picker.dart`
+  - `lib/src/features/media/photo_upload_service.dart`
+  - `lib/src/features/media/photo_upload_queue.dart`
+  - `lib/src/features/media/media_providers.dart`
+  - `lib/src/features/pigs/presentation/add_edit_pig_screen.dart`
+  - `test/features/media/photo_upload_queue_test.dart`
+
+### Steps
+
+- [ ] **Step 7.1: PhotoPicker widget**
+
+`lib/src/features/media/photo_picker.dart`:
+
+```dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+/// Opens a bottom sheet with Camera/Gallery/Cancel. Returns a compressed [File]
+/// (or null if user cancelled). Compression: 1280 max dimension, ~80% quality.
+class PhotoPicker {
+  PhotoPicker._();
+
+  static Future<File?> pick(BuildContext context) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cancel),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.pop(context, null),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return null;
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      maxWidth: 1280, maxHeight: 1280, imageQuality: 80,
+    );
+    if (picked == null) return null;
+    return File(picked.path);
+  }
+}
+```
+
+- [ ] **Step 7.2: PhotoUploadQueue (offline buffer)**
+
+`lib/src/features/media/photo_upload_queue.dart`:
+
+```dart
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class QueuedUpload {
+  QueuedUpload({
+    required this.localPath,
+    required this.storagePath,
+    required this.recordPath,
+    required this.fieldName,
+  });
+  final String localPath;
+  final String storagePath;
+  /// e.g., "farms/f1/pigs/p1" — the Firestore doc to update with the URL.
+  final String recordPath;
+  /// e.g., "photoUrl" (single field) or "photoUrls" (append to array).
+  final String fieldName;
+
+  Map<String, dynamic> toMap() => {
+    'localPath': localPath, 'storagePath': storagePath,
+    'recordPath': recordPath, 'fieldName': fieldName,
+  };
+  factory QueuedUpload.fromMap(Map<String, dynamic> m) => QueuedUpload(
+    localPath: m['localPath'], storagePath: m['storagePath'],
+    recordPath: m['recordPath'], fieldName: m['fieldName'],
+  );
+}
+
+class PhotoUploadQueue {
+  PhotoUploadQueue(this._prefs);
+  final SharedPreferences _prefs;
+  static const _key = 'photo_upload_queue';
+
+  Future<List<QueuedUpload>> all() async {
+    final raw = _prefs.getStringList(_key) ?? [];
+    return raw.map((s) => QueuedUpload.fromMap(jsonDecode(s))).toList();
+  }
+
+  Future<void> enqueue(QueuedUpload q) async {
+    final list = await all();
+    list.add(q);
+    await _persist(list);
+  }
+
+  Future<void> remove(QueuedUpload q) async {
+    final list = await all();
+    list.removeWhere((x) => x.localPath == q.localPath && x.storagePath == q.storagePath);
+    await _persist(list);
+  }
+
+  Future<void> _persist(List<QueuedUpload> list) async {
+    await _prefs.setStringList(_key, list.map((q) => jsonEncode(q.toMap())).toList());
+  }
+}
+```
+
+Test it:
+
+`test/features/media/photo_upload_queue_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:farm_app/src/features/media/photo_upload_queue.dart';
+
+void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  test('enqueue + all', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final q = PhotoUploadQueue(prefs);
+    await q.enqueue(QueuedUpload(
+      localPath: '/tmp/a.jpg', storagePath: 'farms/f/pigs/p/0.jpg',
+      recordPath: 'farms/f/pigs/p', fieldName: 'photoUrl',
+    ));
+    final list = await q.all();
+    expect(list, hasLength(1));
+    expect(list.first.localPath, '/tmp/a.jpg');
+  });
+
+  test('remove matches by both paths', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final q = PhotoUploadQueue(prefs);
+    final a = QueuedUpload(localPath: '/a.jpg', storagePath: 's/a',
+        recordPath: 'r/a', fieldName: 'photoUrl');
+    final b = QueuedUpload(localPath: '/b.jpg', storagePath: 's/b',
+        recordPath: 'r/b', fieldName: 'photoUrl');
+    await q.enqueue(a);
+    await q.enqueue(b);
+    await q.remove(a);
+    expect((await q.all()).map((x) => x.localPath), ['/b.jpg']);
+  });
+}
+```
+
+Run: passes.
+
+- [ ] **Step 7.3: PhotoUploadService**
+
+`lib/src/features/media/photo_upload_service.dart`:
+
+```dart
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'photo_upload_queue.dart';
+
+class PhotoUploadService {
+  PhotoUploadService(this._storage, this._firestore, this._queue);
+  final FirebaseStorage _storage;
+  final FirebaseFirestore _firestore;
+  final PhotoUploadQueue _queue;
+
+  /// Uploads immediately. On failure, enqueues for later retry and returns null.
+  /// Returns the public URL on success, null on queued-for-retry.
+  Future<String?> uploadAndAttach({
+    required File file,
+    required String storagePath,    // "farms/{farmId}/pigs/{pigId}/0.jpg"
+    required String recordPath,     // "farms/{farmId}/pigs/{pigId}"
+    required String fieldName,      // "photoUrl" or "photoUrls"
+  }) async {
+    try {
+      final ref = _storage.ref(storagePath);
+      final task = await ref.putFile(file);
+      final url = await task.ref.getDownloadURL();
+      await _attachUrlToRecord(recordPath: recordPath, fieldName: fieldName, url: url);
+      return url;
+    } catch (_) {
+      await _queue.enqueue(QueuedUpload(
+        localPath: file.path, storagePath: storagePath,
+        recordPath: recordPath, fieldName: fieldName,
+      ));
+      return null;
+    }
+  }
+
+  Future<void> _attachUrlToRecord({
+    required String recordPath,
+    required String fieldName,
+    required String url,
+  }) async {
+    final ref = _firestore.doc(recordPath);
+    if (fieldName.endsWith('s')) {
+      await ref.update({fieldName: FieldValue.arrayUnion([url])});
+    } else {
+      await ref.update({fieldName: url});
+    }
+  }
+
+  /// Process queued uploads. Call on reconnect.
+  Future<void> flushQueue() async {
+    final list = await _queue.all();
+    for (final q in list) {
+      try {
+        final file = File(q.localPath);
+        if (!file.existsSync()) {
+          await _queue.remove(q);
+          continue;
+        }
+        final ref = _storage.ref(q.storagePath);
+        final task = await ref.putFile(file);
+        final url = await task.ref.getDownloadURL();
+        await _attachUrlToRecord(recordPath: q.recordPath, fieldName: q.fieldName, url: url);
+        await _queue.remove(q);
+      } catch (_) {
+        // Keep in queue for next attempt.
+      }
+    }
+  }
+}
+```
+
+- [ ] **Step 7.4: Media providers**
+
+`lib/src/features/media/media_providers.dart`:
+
+```dart
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../activity/application/activity_providers.dart';
+import 'photo_upload_queue.dart';
+import 'photo_upload_service.dart';
+
+final firebaseStorageProvider = Provider<FirebaseStorage>((_) => FirebaseStorage.instance);
+
+final sharedPreferencesProvider = FutureProvider<SharedPreferences>(
+  (_) => SharedPreferences.getInstance(),
+);
+
+final photoUploadQueueProvider = Provider<PhotoUploadQueue?>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).asData?.value;
+  return prefs == null ? null : PhotoUploadQueue(prefs);
+});
+
+final photoUploadServiceProvider = Provider<PhotoUploadService?>((ref) {
+  final queue = ref.watch(photoUploadQueueProvider);
+  if (queue == null) return null;
+  return PhotoUploadService(
+    ref.watch(firebaseStorageProvider),
+    ref.watch(firestoreProvider),
+    queue,
+  );
+});
+```
+
+- [ ] **Step 7.5: Add/Edit Pig screen**
+
+`lib/src/features/pigs/presentation/add_edit_pig_screen.dart`:
+
+```dart
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../areas/application/area_providers.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../media/media_providers.dart';
+import '../../media/photo_picker.dart';
+import '../application/pig_providers.dart';
+import '../domain/pig.dart';
+
+const _breedSeed = ['Yorkshire', 'Duroc', 'Landrace', 'Hampshire', 'Pietrain', 'Native'];
+
+class AddEditPigScreen extends ConsumerStatefulWidget {
+  const AddEditPigScreen({super.key, this.existing});
+  final Pig? existing;
+  @override
+  ConsumerState<AddEditPigScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<AddEditPigScreen> {
+  late final TextEditingController _tag;
+  late final TextEditingController _breed;
+  late final TextEditingController _weight;
+  late final TextEditingController _notes;
+  PigSex _sex = PigSex.female;
+  PigStage _stage = PigStage.grower;
+  String? _areaId;
+  String? _penId;
+  DateTime? _birthDate;
+  String? _sireId;
+  String? _damId;
+  File? _photoFile;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _tag = TextEditingController(text: e?.tagId ?? '');
+    _breed = TextEditingController(text: e?.breed ?? '');
+    _weight = TextEditingController(text: e?.currentWeight?.toStringAsFixed(0) ?? '');
+    _notes = TextEditingController(text: e?.notes ?? '');
+    _sex = e?.sex ?? PigSex.female;
+    _stage = e?.stage ?? PigStage.grower;
+    _areaId = e?.currentAreaId;
+    _penId = e?.currentPenId;
+    _birthDate = e?.birthDate.toDate();
+    _sireId = e?.sireId;
+    _damId = e?.damId;
+  }
+
+  @override
+  void dispose() {
+    _tag.dispose(); _breed.dispose(); _weight.dispose(); _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final file = await PhotoPicker.pick(context);
+    if (file != null) setState(() => _photoFile = file);
+  }
+
+  Future<void> _save() async {
+    setState(() => _error = null);
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_tag.text.trim().isEmpty) { setState(() => _error = 'Tag ID is required.'); return; }
+    if (_breed.text.trim().isEmpty) { setState(() => _error = 'Breed is required.'); return; }
+    if (_birthDate == null) { setState(() => _error = 'Birth date is required.'); return; }
+    if (_areaId == null) { setState(() => _error = 'Area is required.'); return; }
+    setState(() => _busy = true);
+    final repo = ref.read(pigRepositoryProvider);
+    final photoService = ref.read(photoUploadServiceProvider);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    try {
+      String pigId;
+      if (widget.existing == null) {
+        pigId = await repo.createPig(
+          farmId: farmId, tagId: _tag.text, sex: _sex, breed: _breed.text,
+          birthDate: Timestamp.fromDate(_birthDate!),
+          sireId: _sireId, damId: _damId, stage: _stage,
+          currentAreaId: _areaId!, currentPenId: _penId,
+          currentWeight: double.tryParse(_weight.text),
+          photoUrl: null, notes: _notes.text,
+          actorUserId: user.uid, actorDisplayName: actorName,
+        );
+      } else {
+        pigId = widget.existing!.id;
+        await repo.updatePig(
+          farmId: farmId, pigId: pigId, tagId: _tag.text, sex: _sex,
+          breed: _breed.text, birthDate: Timestamp.fromDate(_birthDate!),
+          sireId: _sireId, damId: _damId, stage: _stage,
+          currentAreaId: _areaId!, currentPenId: _penId,
+          currentWeight: double.tryParse(_weight.text),
+          photoUrl: widget.existing!.photoUrl, notes: _notes.text,
+        );
+      }
+      if (_photoFile != null && photoService != null) {
+        await photoService.uploadAndAttach(
+          file: _photoFile!,
+          storagePath: 'farms/$farmId/pigs/$pigId/cover.jpg',
+          recordPath: 'farms/$farmId/pigs/$pigId',
+          fieldName: 'photoUrl',
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final areasAsync = farmId != null
+        ? ref.watch(areasStreamProvider(farmId))
+        : const AsyncValue.data([]);
+    final pensAsync = (farmId != null && _areaId != null)
+        ? ref.watch(pensStreamProvider((farmId: farmId, areaId: _areaId!)))
+        : const AsyncValue.data([]);
+    final pigsAsync = farmId != null
+        ? ref.watch(pigsStreamProvider(farmId))
+        : const AsyncValue.data([]);
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.existing == null ? 'Add pig' : 'Edit pig')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              onTap: _pickPhoto,
+              child: Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(12),
+                  image: _photoFile != null
+                      ? DecorationImage(image: FileImage(_photoFile!), fit: BoxFit.cover)
+                      : widget.existing?.photoUrl != null
+                          ? DecorationImage(image: NetworkImage(widget.existing!.photoUrl!), fit: BoxFit.cover)
+                          : null,
+                ),
+                child: _photoFile == null && widget.existing?.photoUrl == null
+                    ? const Center(child: Icon(Icons.add_a_photo, size: 48, color: Colors.grey))
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(controller: _tag, decoration: const InputDecoration(labelText: 'Tag ID')),
+            const SizedBox(height: 12),
+            SegmentedButton<PigSex>(
+              segments: PigSex.values.map((s) =>
+                ButtonSegment(value: s, label: Text(s.label))).toList(),
+              selected: {_sex},
+              onSelectionChanged: (s) => setState(() => _sex = s.first),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _breedSeed.contains(_breed.text) ? _breed.text : null,
+              decoration: const InputDecoration(labelText: 'Breed'),
+              items: _breedSeed.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+              onChanged: (v) => setState(() => _breed.text = v ?? ''),
+            ),
+            TextField(controller: _breed, decoration: const InputDecoration(labelText: 'Breed (or type custom)')),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<PigStage>(
+              value: _stage,
+              decoration: const InputDecoration(labelText: 'Stage'),
+              items: PigStage.values.map((s) =>
+                DropdownMenuItem(value: s, child: Text(s.label))).toList(),
+              onChanged: (v) => setState(() => _stage = v ?? PigStage.grower),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Birth date'),
+              subtitle: Text(_birthDate?.toLocal().toString().split(' ')[0] ?? 'Select'),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context, initialDate: _birthDate ?? DateTime.now(),
+                  firstDate: DateTime(2015), lastDate: DateTime.now(),
+                );
+                if (picked != null) setState(() => _birthDate = picked);
+              },
+            ),
+            areasAsync.when(
+              data: (areas) => DropdownButtonFormField<String>(
+                value: _areaId,
+                decoration: const InputDecoration(labelText: 'Area'),
+                items: areas.map<DropdownMenuItem<String>>((a) =>
+                  DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
+                onChanged: (v) => setState(() { _areaId = v; _penId = null; }),
+              ),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 12),
+            pensAsync.when(
+              data: (pens) => DropdownButtonFormField<String?>(
+                value: _penId,
+                decoration: const InputDecoration(labelText: 'Pen (optional)'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('— none —')),
+                  ...pens.map<DropdownMenuItem<String?>>((p) =>
+                    DropdownMenuItem(value: p.id as String?, child: Text(p.name))),
+                ],
+                onChanged: (v) => setState(() => _penId = v),
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _weight,
+              decoration: const InputDecoration(labelText: 'Weight (kg, optional)'),
+              keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
+            pigsAsync.when(
+              data: (pigs) {
+                final sires = pigs.where((p) => p.sex == PigSex.male).toList();
+                final dams = pigs.where((p) => p.sex == PigSex.female).toList();
+                return Column(
+                  children: [
+                    DropdownButtonFormField<String?>(
+                      value: _sireId,
+                      decoration: const InputDecoration(labelText: 'Sire (optional)'),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('— unknown —')),
+                        ...sires.map<DropdownMenuItem<String?>>((p) =>
+                          DropdownMenuItem(value: p.id as String?, child: Text(p.tagId))),
+                      ],
+                      onChanged: (v) => setState(() => _sireId = v),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String?>(
+                      value: _damId,
+                      decoration: const InputDecoration(labelText: 'Dam (optional)'),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('— unknown —')),
+                        ...dams.map<DropdownMenuItem<String?>>((p) =>
+                          DropdownMenuItem(value: p.id as String?, child: Text(p.tagId))),
+                      ],
+                      onChanged: (v) => setState(() => _damId = v),
+                    ),
+                  ],
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              maxLines: 3),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 7.6: Wire Add Pig from pigs list**
+
+Edit `lib/src/features/pigs/presentation/pigs_list_screen.dart` — add a FAB:
+
+```dart
+floatingActionButton: FloatingActionButton(
+  onPressed: () => Navigator.push(context, MaterialPageRoute(
+    builder: (_) => const AddEditPigScreen())),
+  child: const Icon(Icons.add),
+),
+```
+
+Add import: `import 'add_edit_pig_screen.dart';`
+
+- [ ] **Step 7.7: Verify**
+
+```bash
+flutter analyze
+flutter test
+flutter run -d <device>
+```
+
+Manual: Add a pig with photo (camera), verify photo uploads to Storage and renders on detail. Try with airplane mode toggled mid-upload — confirm a queued entry persists (inspect SharedPreferences via Flutter DevTools).
+
+- [ ] **Step 7.8: Commit**
+
+```bash
+git add -A
+git commit -m "feat(media,pigs): photo capture + Add/Edit Pig flow
+
+- PhotoPicker (camera/gallery), PhotoUploadService, PhotoUploadQueue
+  with shared_preferences persistence
+- AddEditPigScreen wires the broken Save flow; full form with
+  area+pen, sire/dam dropdowns, breed typeahead, photo"
+```
+
+---
+
+## Task 8: Breeding Log + Task Generator
+
+**Goal:** Build the breeding-cycle workflow (heat → insemination → pregnancy check → confirmation/failure → expected farrowing date computed at +114 days). Add the `TaskGenerator` that creates derived `pregnancy_check`, `farrowing_prep`, `farrowing_expected` tasks atomically with the breeding write.
+
+**Files:**
+- Create:
+  - `lib/src/features/pigs/domain/breeding_record.dart`
+  - `lib/src/features/pigs/data/breeding_repository.dart`
+  - `lib/src/features/tasks/domain/task.dart`
+  - `lib/src/features/tasks/data/task_repository.dart`
+  - `lib/src/features/tasks/application/task_generator.dart`
+  - `lib/src/features/tasks/application/task_providers.dart`
+  - `lib/src/features/pigs/presentation/breeding_log_screen.dart`
+  - `test/features/pigs/domain/breeding_record_test.dart`
+  - `test/features/tasks/domain/task_test.dart`
+  - `test/features/tasks/application/task_generator_test.dart`
+  - `test/features/pigs/data/breeding_repository_test.dart`
+- Modify:
+  - `lib/src/features/pigs/application/pig_providers.dart` (add breeding stream)
+  - `lib/src/features/pigs/presentation/pig_detail_screen.dart` (Breeding tab now real)
+
+### Steps
+
+- [ ] **Step 8.1: Task model**
+
+`lib/src/features/tasks/domain/task.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum TaskType {
+  pregnancyCheck('pregnancy_check', 'Pregnancy check'),
+  farrowingPrep('farrowing_prep', 'Farrowing prep'),
+  farrowingExpected('farrowing_expected', 'Farrowing expected'),
+  vaccinationDue('vaccination_due', 'Vaccination due'),
+  withdrawalEnd('withdrawal_end', 'Withdrawal period ends'),
+  manual('manual', 'Manual');
+
+  const TaskType(this.value, this.label);
+  final String value;
+  final String label;
+  static TaskType fromString(String s) =>
+      TaskType.values.firstWhere((t) => t.value == s, orElse: () => TaskType.manual);
+}
+
+enum TaskStatus {
+  open('open'), completed('completed'), skipped('skipped');
+  const TaskStatus(this.value);
+  final String value;
+  static TaskStatus fromString(String s) =>
+      TaskStatus.values.firstWhere((t) => t.value == s, orElse: () => TaskStatus.open);
+}
+
+class TaskAssignment {
+  final String kind;  // 'user' or 'area'
+  final String id;
+  const TaskAssignment({required this.kind, required this.id});
+  Map<String, dynamic> toMap() => {'kind': kind, 'id': id};
+  factory TaskAssignment.fromMap(Map<String, dynamic> m) =>
+      TaskAssignment(kind: m['kind'], id: m['id']);
+}
+
+class TaskSource {
+  final String collection;
+  final String docId;
+  const TaskSource({required this.collection, required this.docId});
+  Map<String, dynamic> toMap() => {'collection': collection, 'docId': docId};
+  factory TaskSource.fromMap(Map<String, dynamic> m) =>
+      TaskSource(collection: m['collection'], docId: m['docId']);
+}
+
+class FarmTask {
+  final String id;
+  final String farmId;
+  final TaskType type;
+  final String title;
+  final String? description;
+  final Timestamp dueDate;
+  final String? relatedPigId;
+  final String? relatedBreedingId;
+  final String? relatedBatchId;
+  final String? relatedAreaId;
+  final TaskAssignment? assignedTo;
+  final TaskStatus status;
+  final bool autoGenerated;
+  final TaskSource? source;
+  final String? completedBy;
+  final Timestamp? completedAt;
+  final Timestamp createdAt;
+
+  const FarmTask({
+    required this.id, required this.farmId, required this.type,
+    required this.title, required this.description, required this.dueDate,
+    required this.relatedPigId, required this.relatedBreedingId,
+    required this.relatedBatchId, required this.relatedAreaId,
+    required this.assignedTo, required this.status,
+    required this.autoGenerated, required this.source,
+    required this.completedBy, required this.completedAt,
+    required this.createdAt,
+  });
+
+  factory FarmTask.fromFirestore(DocumentSnapshot doc, {required String farmId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return FarmTask(
+      id: doc.id, farmId: farmId,
+      type: TaskType.fromString(d['type'] as String? ?? 'manual'),
+      title: d['title'] as String,
+      description: d['description'] as String?,
+      dueDate: d['dueDate'] as Timestamp,
+      relatedPigId: d['relatedPigId'] as String?,
+      relatedBreedingId: d['relatedBreedingId'] as String?,
+      relatedBatchId: d['relatedBatchId'] as String?,
+      relatedAreaId: d['relatedAreaId'] as String?,
+      assignedTo: d['assignedTo'] != null
+          ? TaskAssignment.fromMap(d['assignedTo'] as Map<String, dynamic>) : null,
+      status: TaskStatus.fromString(d['status'] as String? ?? 'open'),
+      autoGenerated: d['autoGenerated'] as bool? ?? false,
+      source: d['source'] != null
+          ? TaskSource.fromMap(d['source'] as Map<String, dynamic>) : null,
+      completedBy: d['completedBy'] as String?,
+      completedAt: d['completedAt'] as Timestamp?,
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'type': type.value, 'title': title,
+    if (description != null) 'description': description,
+    'dueDate': dueDate,
+    if (relatedPigId != null) 'relatedPigId': relatedPigId,
+    if (relatedBreedingId != null) 'relatedBreedingId': relatedBreedingId,
+    if (relatedBatchId != null) 'relatedBatchId': relatedBatchId,
+    if (relatedAreaId != null) 'relatedAreaId': relatedAreaId,
+    if (assignedTo != null) 'assignedTo': assignedTo!.toMap(),
+    'status': status.value,
+    'autoGenerated': autoGenerated,
+    if (source != null) 'source': source!.toMap(),
+    if (completedBy != null) 'completedBy': completedBy,
+    if (completedAt != null) 'completedAt': completedAt,
+    'createdAt': createdAt,
+  };
+}
+```
+
+- [ ] **Step 8.2: BreedingRecord model**
+
+`lib/src/features/pigs/domain/breeding_record.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+enum BreedingMethod {
+  natural('natural', 'Natural'), ai('ai', 'AI');
+  const BreedingMethod(this.value, this.label);
+  final String value;
+  final String label;
+  static BreedingMethod fromString(String s) =>
+      BreedingMethod.values.firstWhere((m) => m.value == s, orElse: () => BreedingMethod.natural);
+}
+
+enum BreedingStatus {
+  planned('planned', 'Planned'),
+  confirmed('confirmed', 'Confirmed pregnant'),
+  farrowed('farrowed', 'Farrowed'),
+  failed('failed', 'Failed'),
+  aborted('aborted', 'Aborted');
+  const BreedingStatus(this.value, this.label);
+  final String value;
+  final String label;
+  static BreedingStatus fromString(String s) =>
+      BreedingStatus.values.firstWhere((b) => b.value == s, orElse: () => BreedingStatus.planned);
+}
+
+/// Gestation length in pigs (industry standard ~114 days, "3 months, 3 weeks, 3 days").
+const int gestationDays = 114;
+
+class BreedingRecord {
+  final String id;
+  final String farmId;
+  final String sowId;
+  final String boarId;
+  final Timestamp? heatDate;
+  final Timestamp inseminationDate;
+  final BreedingMethod method;
+  final Timestamp? pregnancyCheckDate;
+  final bool confirmed;
+  final Timestamp expectedFarrowingDate;
+  final BreedingStatus status;
+  final String? notes;
+  final String createdBy;
+  final Timestamp createdAt;
+
+  const BreedingRecord({
+    required this.id, required this.farmId,
+    required this.sowId, required this.boarId,
+    required this.heatDate, required this.inseminationDate,
+    required this.method, required this.pregnancyCheckDate,
+    required this.confirmed, required this.expectedFarrowingDate,
+    required this.status, required this.notes,
+    required this.createdBy, required this.createdAt,
+  });
+
+  factory BreedingRecord.fromFirestore(
+    DocumentSnapshot doc, {required String farmId, required String sowId}) {
+    final d = doc.data() as Map<String, dynamic>;
+    return BreedingRecord(
+      id: doc.id, farmId: farmId, sowId: sowId,
+      boarId: d['boarId'] as String,
+      heatDate: d['heatDate'] as Timestamp?,
+      inseminationDate: d['inseminationDate'] as Timestamp,
+      method: BreedingMethod.fromString(d['method'] as String? ?? 'natural'),
+      pregnancyCheckDate: d['pregnancyCheckDate'] as Timestamp?,
+      confirmed: d['confirmed'] as bool? ?? false,
+      expectedFarrowingDate: d['expectedFarrowingDate'] as Timestamp,
+      status: BreedingStatus.fromString(d['status'] as String? ?? 'planned'),
+      notes: d['notes'] as String?,
+      createdBy: d['createdBy'] as String? ?? '',
+      createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'boarId': boarId,
+    if (heatDate != null) 'heatDate': heatDate,
+    'inseminationDate': inseminationDate,
+    'method': method.value,
+    if (pregnancyCheckDate != null) 'pregnancyCheckDate': pregnancyCheckDate,
+    'confirmed': confirmed,
+    'expectedFarrowingDate': expectedFarrowingDate,
+    'status': status.value,
+    if (notes != null) 'notes': notes,
+    'createdBy': createdBy,
+    'createdAt': createdAt,
+  };
+
+  static Timestamp computeExpectedFarrowingDate(Timestamp inseminationDate) =>
+      Timestamp.fromDate(inseminationDate.toDate().add(const Duration(days: gestationDays)));
+}
+```
+
+- [ ] **Step 8.3: Test — TaskGenerator (breeding tasks)**
+
+`test/features/tasks/application/task_generator_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/tasks/application/task_generator.dart';
+import 'package:farm_app/src/features/tasks/data/task_repository.dart';
+
+void main() {
+  test('breeding write generates pregnancy_check + farrowing_prep + farrowing_expected', () async {
+    final f = FakeFirebaseFirestore();
+    final tasks = TaskRepository(f);
+    final gen = TaskGenerator(f, tasks);
+    final batch = f.batch();
+    final inseminationDate = Timestamp.fromMillisecondsSinceEpoch(1700000000000);
+
+    gen.addBreedingTasksToBatch(
+      batch: batch, farmId: 'f1', breedingRecordId: 'br1',
+      sowId: 'sow1', sowTagId: 'SOW-001', areaId: 'a1',
+      inseminationDate: inseminationDate,
+    );
+    await batch.commit();
+
+    final snap = await f.collection('farms').doc('f1').collection('tasks').get();
+    expect(snap.docs, hasLength(3));
+    final types = snap.docs.map((d) => d.data()['type']).toSet();
+    expect(types, {'pregnancy_check', 'farrowing_prep', 'farrowing_expected'});
+  });
+
+  test('idempotent — re-running with same source upserts (no duplicates)', () async {
+    final f = FakeFirebaseFirestore();
+    final tasks = TaskRepository(f);
+    final gen = TaskGenerator(f, tasks);
+    final ts = Timestamp.fromMillisecondsSinceEpoch(1700000000000);
+
+    final b1 = f.batch();
+    gen.addBreedingTasksToBatch(batch: b1, farmId: 'f1', breedingRecordId: 'br1',
+      sowId: 's1', sowTagId: 'S', areaId: 'a',
+      inseminationDate: ts);
+    await b1.commit();
+    final b2 = f.batch();
+    gen.addBreedingTasksToBatch(batch: b2, farmId: 'f1', breedingRecordId: 'br1',
+      sowId: 's1', sowTagId: 'S', areaId: 'a',
+      inseminationDate: ts);
+    await b2.commit();
+
+    final snap = await f.collection('farms').doc('f1').collection('tasks').get();
+    expect(snap.docs, hasLength(3));
+  });
+}
+```
+
+- [ ] **Step 8.4: Implement TaskRepository + TaskGenerator**
+
+`lib/src/features/tasks/data/task_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../domain/task.dart';
+
+class TaskRepository {
+  TaskRepository(this._firestore);
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('tasks');
+
+  Future<String> createManualTask({
+    required String farmId,
+    required String title, String? description,
+    required Timestamp dueDate,
+    String? relatedPigId, String? relatedAreaId,
+    TaskAssignment? assignedTo,
+    required String creatorUserId,
+  }) async {
+    final ref = _col(farmId).doc();
+    await ref.set({
+      'type': 'manual', 'title': title,
+      if (description != null) 'description': description,
+      'dueDate': dueDate,
+      if (relatedPigId != null) 'relatedPigId': relatedPigId,
+      if (relatedAreaId != null) 'relatedAreaId': relatedAreaId,
+      if (assignedTo != null) 'assignedTo': assignedTo.toMap(),
+      'status': 'open', 'autoGenerated': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  Stream<List<FarmTask>> streamOpenTasks(String farmId) {
+    return _col(farmId)
+        .where('status', isEqualTo: 'open')
+        .orderBy('dueDate')
+        .snapshots()
+        .map((s) => s.docs.map((d) => FarmTask.fromFirestore(d, farmId: farmId)).toList());
+  }
+
+  Stream<List<FarmTask>> streamTasksAssignedToUser({
+    required String farmId, required String userId,
+  }) {
+    return _col(farmId)
+        .where('status', isEqualTo: 'open')
+        .where('assignedTo.kind', isEqualTo: 'user')
+        .where('assignedTo.id', isEqualTo: userId)
+        .snapshots()
+        .map((s) => s.docs.map((d) => FarmTask.fromFirestore(d, farmId: farmId)).toList());
+  }
+
+  Future<void> completeTask({
+    required String farmId, required String taskId, required String userId,
+  }) async {
+    await _col(farmId).doc(taskId).update({
+      'status': 'completed', 'completedBy': userId,
+      'completedAt': FieldValue.serverTimestamp(),
+    });
+  }
+}
+```
+
+`lib/src/features/tasks/application/task_generator.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:farm_app/src/features/tasks/data/task_repository.dart';
+
+class TaskGenerator {
+  TaskGenerator(this._firestore, this._tasks);
+  final FirebaseFirestore _firestore;
+  // ignore: unused_field
+  final TaskRepository _tasks;
+
+  CollectionReference<Map<String, dynamic>> _tasksCol(String farmId) =>
+      _firestore.collection('farms').doc(farmId).collection('tasks');
+
+  /// Idempotent task ID derived from source. Re-runs upsert.
+  String _taskIdFor(String breedingRecordId, String suffix) =>
+      'br_${breedingRecordId}_$suffix';
+
+  void addBreedingTasksToBatch({
+    required WriteBatch batch,
+    required String farmId,
+    required String breedingRecordId,
+    required String sowId,
+    required String sowTagId,
+    String? areaId,
+    required Timestamp inseminationDate,
+  }) {
+    final ins = inseminationDate.toDate();
+    final pregCheck = ins.add(const Duration(days: 30));
+    final farrPrep = ins.add(const Duration(days: 107));
+    final farrExp = ins.add(const Duration(days: 114));
+
+    _writeTask(batch, farmId, _taskIdFor(breedingRecordId, 'preg'),
+      type: 'pregnancy_check', title: 'Pregnancy check for $sowTagId',
+      dueDate: Timestamp.fromDate(pregCheck),
+      relatedPigId: sowId, relatedBreedingId: breedingRecordId, areaId: areaId,
+      source: {'collection': 'breeding_records', 'docId': breedingRecordId});
+    _writeTask(batch, farmId, _taskIdFor(breedingRecordId, 'prep'),
+      type: 'farrowing_prep', title: 'Farrowing prep for $sowTagId',
+      dueDate: Timestamp.fromDate(farrPrep),
+      relatedPigId: sowId, relatedBreedingId: breedingRecordId, areaId: areaId,
+      source: {'collection': 'breeding_records', 'docId': breedingRecordId});
+    _writeTask(batch, farmId, _taskIdFor(breedingRecordId, 'farr'),
+      type: 'farrowing_expected', title: 'Farrowing expected for $sowTagId',
+      dueDate: Timestamp.fromDate(farrExp),
+      relatedPigId: sowId, relatedBreedingId: breedingRecordId, areaId: areaId,
+      source: {'collection': 'breeding_records', 'docId': breedingRecordId});
+  }
+
+  void addWithdrawalTaskToBatch({
+    required WriteBatch batch,
+    required String farmId,
+    required String healthRecordId,
+    required String pigId,
+    required String tagId,
+    String? areaId,
+    required Timestamp withdrawalEndDate,
+  }) {
+    _writeTask(batch, farmId, 'hr_${healthRecordId}_wd',
+      type: 'withdrawal_end',
+      title: 'Withdrawal period ends for $tagId',
+      dueDate: withdrawalEndDate,
+      relatedPigId: pigId, areaId: areaId,
+      source: {'collection': 'health_records', 'docId': healthRecordId});
+  }
+
+  void _writeTask(
+    WriteBatch batch, String farmId, String taskId, {
+    required String type, required String title,
+    required Timestamp dueDate, String? relatedPigId, String? relatedBreedingId,
+    String? areaId, Map<String, String>? source,
+  }) {
+    batch.set(_tasksCol(farmId).doc(taskId), {
+      'type': type, 'title': title, 'dueDate': dueDate,
+      if (relatedPigId != null) 'relatedPigId': relatedPigId,
+      if (relatedBreedingId != null) 'relatedBreedingId': relatedBreedingId,
+      if (areaId != null) 'relatedAreaId': areaId,
+      'status': 'open', 'autoGenerated': true,
+      if (source != null) 'source': source,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+}
+```
+
+- [ ] **Step 8.5: BreedingRepository**
+
+`lib/src/features/pigs/data/breeding_repository.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../activity/data/activity_repository.dart';
+import '../../tasks/application/task_generator.dart';
+import '../domain/breeding_record.dart';
+
+class BreedingRepository {
+  BreedingRepository(this._firestore, this._activity, this._gen);
+  final FirebaseFirestore _firestore;
+  final ActivityRepository _activity;
+  final TaskGenerator _gen;
+
+  CollectionReference<Map<String, dynamic>> _col(String farmId, String pigId) =>
+      _firestore.collection('farms').doc(farmId)
+          .collection('pigs').doc(pigId)
+          .collection('breeding_records');
+
+  Future<String> logBreeding({
+    required String farmId,
+    required String sowId,
+    required String sowTagId,
+    required String? sowAreaId,
+    required String boarId,
+    required Timestamp? heatDate,
+    required Timestamp inseminationDate,
+    required BreedingMethod method,
+    required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    final expected = BreedingRecord.computeExpectedFarrowingDate(inseminationDate);
+    final ref = _col(farmId, sowId).doc();
+    final batch = _firestore.batch();
+    batch.set(ref, {
+      'boarId': boarId,
+      if (heatDate != null) 'heatDate': heatDate,
+      'inseminationDate': inseminationDate,
+      'method': method.value,
+      'confirmed': false,
+      'expectedFarrowingDate': expected,
+      'status': 'planned',
+      if (notes != null) 'notes': notes,
+      'createdBy': actorUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    _gen.addBreedingTasksToBatch(
+      batch: batch, farmId: farmId, breedingRecordId: ref.id,
+      sowId: sowId, sowTagId: sowTagId, areaId: sowAreaId,
+      inseminationDate: inseminationDate,
+    );
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'breeding_logged', entityType: 'pig', entityId: sowId,
+      areaId: sowAreaId,
+      summary: '$actorDisplayName logged breeding for $sowTagId',
+    );
+    await batch.commit();
+    return ref.id;
+  }
+
+  Future<void> recordPregnancyCheck({
+    required String farmId, required String sowId,
+    required String breedingRecordId, required bool confirmed,
+    required Timestamp checkDate,
+    required String actorUserId, required String actorDisplayName,
+    required String sowTagId, String? areaId,
+  }) async {
+    final batch = _firestore.batch();
+    batch.update(_col(farmId, sowId).doc(breedingRecordId), {
+      'confirmed': confirmed,
+      'pregnancyCheckDate': checkDate,
+      'status': confirmed ? 'confirmed' : 'failed',
+    });
+    if (!confirmed) {
+      // Cancel the farrowing-related tasks.
+      final tasksCol = _firestore.collection('farms').doc(farmId).collection('tasks');
+      batch.update(tasksCol.doc('br_${breedingRecordId}_prep'), {'status': 'skipped'});
+      batch.update(tasksCol.doc('br_${breedingRecordId}_farr'), {'status': 'skipped'});
+    }
+    // Mark the pregnancy_check task as completed regardless.
+    batch.update(_firestore.collection('farms').doc(farmId).collection('tasks')
+        .doc('br_${breedingRecordId}_preg'), {
+      'status': 'completed', 'completedBy': actorUserId,
+      'completedAt': FieldValue.serverTimestamp(),
+    });
+    _activity.addActivityToBatch(
+      batch: batch, farmId: farmId,
+      actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+      action: 'pregnancy_check_logged', entityType: 'pig', entityId: sowId,
+      areaId: areaId,
+      summary: '$actorDisplayName recorded pregnancy check for $sowTagId: '
+          '${confirmed ? "confirmed" : "failed"}',
+    );
+    await batch.commit();
+  }
+
+  Future<void> markFarrowed({
+    required String farmId, required String sowId, required String breedingRecordId,
+  }) async {
+    await _col(farmId, sowId).doc(breedingRecordId).update({'status': 'farrowed'});
+  }
+
+  Stream<List<BreedingRecord>> streamBreedingRecords({
+    required String farmId, required String sowId,
+  }) {
+    return _col(farmId, sowId)
+        .orderBy('inseminationDate', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map((d) =>
+            BreedingRecord.fromFirestore(d, farmId: farmId, sowId: sowId)).toList());
+  }
+}
+```
+
+- [ ] **Step 8.6: Task providers + breeding providers**
+
+`lib/src/features/tasks/application/task_providers.dart`:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../activity/application/activity_providers.dart';
+import '../data/task_repository.dart';
+import '../domain/task.dart';
+import 'task_generator.dart';
+
+final taskRepositoryProvider = Provider<TaskRepository>(
+  (ref) => TaskRepository(ref.watch(firestoreProvider)),
+);
+final taskGeneratorProvider = Provider<TaskGenerator>(
+  (ref) => TaskGenerator(ref.watch(firestoreProvider), ref.watch(taskRepositoryProvider)),
+);
+
+final openTasksStreamProvider =
+    StreamProvider.family<List<FarmTask>, String>((ref, farmId) {
+  return ref.watch(taskRepositoryProvider).streamOpenTasks(farmId);
+});
+
+final myTasksStreamProvider =
+    StreamProvider.family<List<FarmTask>, ({String farmId, String userId})>((ref, args) {
+  return ref.watch(taskRepositoryProvider).streamTasksAssignedToUser(
+        farmId: args.farmId, userId: args.userId);
+});
+```
+
+Add to `lib/src/features/pigs/application/pig_providers.dart`:
+
+```dart
+import '../data/breeding_repository.dart';
+import '../domain/breeding_record.dart';
+import '../../tasks/application/task_providers.dart';
+
+final breedingRepositoryProvider = Provider<BreedingRepository>(
+  (ref) => BreedingRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+    ref.watch(taskGeneratorProvider),
+  ),
+);
+
+final breedingStreamProvider =
+    StreamProvider.family<List<BreedingRecord>, ({String farmId, String sowId})>((ref, args) {
+  return ref.watch(breedingRepositoryProvider).streamBreedingRecords(
+        farmId: args.farmId, sowId: args.sowId);
+});
+```
+
+- [ ] **Step 8.7: Breeding log screen**
+
+`lib/src/features/pigs/presentation/breeding_log_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/pig_providers.dart';
+import '../domain/breeding_record.dart';
+import '../domain/pig.dart';
+
+class BreedingLogScreen extends ConsumerStatefulWidget {
+  const BreedingLogScreen({super.key, required this.sow});
+  final Pig sow;
+  @override
+  ConsumerState<BreedingLogScreen> createState() => _S();
+}
+
+class _S extends ConsumerState<BreedingLogScreen> {
+  DateTime? _heatDate;
+  DateTime _inseminationDate = DateTime.now();
+  String? _boarId;
+  BreedingMethod _method = BreedingMethod.natural;
+  final _notes = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() { _notes.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_boarId == null) { setState(() => _error = 'Select a boar.'); return; }
+    setState(() { _busy = true; _error = null; });
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    try {
+      await ref.read(breedingRepositoryProvider).logBreeding(
+        farmId: farmId, sowId: widget.sow.id, sowTagId: widget.sow.tagId,
+        sowAreaId: widget.sow.currentAreaId, boarId: _boarId!,
+        heatDate: _heatDate == null ? null : Timestamp.fromDate(_heatDate!),
+        inseminationDate: Timestamp.fromDate(_inseminationDate),
+        method: _method,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid, actorDisplayName: actorName,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final pigsAsync = farmId != null
+        ? ref.watch(pigsStreamProvider(farmId))
+        : const AsyncValue.data([]);
+    final expected = _inseminationDate.add(const Duration(days: gestationDays));
+    return Scaffold(
+      appBar: AppBar(title: Text('Log breeding · ${widget.sow.tagId}')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Heat observed (optional)'),
+              subtitle: Text(_heatDate?.toLocal().toString().split(' ')[0] ?? '—'),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context,
+                    initialDate: _heatDate ?? DateTime.now(),
+                    firstDate: DateTime(2024), lastDate: DateTime.now());
+                if (p != null) setState(() => _heatDate = p);
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Insemination date'),
+              subtitle: Text(_inseminationDate.toLocal().toString().split(' ')[0]),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final p = await showDatePicker(context: context,
+                    initialDate: _inseminationDate,
+                    firstDate: DateTime(2024), lastDate: DateTime.now());
+                if (p != null) setState(() => _inseminationDate = p);
+              },
+            ),
+            const SizedBox(height: 12),
+            pigsAsync.when(
+              data: (pigs) {
+                final boars = pigs.where((p) =>
+                  p.sex == PigSex.male && p.stage == PigStage.boar &&
+                  p.status == PigStatus.active).toList();
+                return DropdownButtonFormField<String>(
+                  value: _boarId,
+                  decoration: const InputDecoration(labelText: 'Boar'),
+                  items: boars.map((b) =>
+                    DropdownMenuItem(value: b.id, child: Text(b.tagId))).toList(),
+                  onChanged: (v) => setState(() => _boarId = v),
+                );
+              },
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<BreedingMethod>(
+              segments: BreedingMethod.values.map((m) =>
+                ButtonSegment(value: m, label: Text(m.label))).toList(),
+              selected: {_method},
+              onSelectionChanged: (s) => setState(() => _method = s.first),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: Colors.green.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text('Expected farrowing: ${DateFormat.yMMMd().format(expected)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'), maxLines: 3),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _busy ? null : _save,
+              child: _busy ? const CircularProgressIndicator() : const Text('Save breeding')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 8.8: Wire Breeding tab in Pig Detail**
+
+In `pig_detail_screen.dart`, replace the `_PlaceholderTab(text: 'Breeding history...')` with:
+
+```dart
+_BreedingTab(pig: pig),
+```
+
+Add this widget at the bottom of the file:
+
+```dart
+class _BreedingTab extends ConsumerWidget {
+  const _BreedingTab({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canBreed = pig.sex == PigSex.female &&
+        (pig.stage == PigStage.sow || pig.stage == PigStage.gilt);
+    if (!canBreed) {
+      return const Center(child: Text('Breeding only applies to sows and gilts.'));
+    }
+    final recordsAsync = ref.watch(breedingStreamProvider(
+        (farmId: pig.farmId, sowId: pig.id)));
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.favorite),
+        label: const Text('Log breeding'),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => BreedingLogScreen(sow: pig))),
+      ),
+      body: recordsAsync.when(
+        data: (records) {
+          if (records.isEmpty) return const Center(child: Text('No breeding records yet.'));
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: records.map((r) => Card(
+              child: ListTile(
+                title: Text('${r.method.label} · ${r.status.label}'),
+                subtitle: Text(
+                  'Inseminated: ${r.inseminationDate.toDate().toString().split(' ')[0]}\n'
+                  'Expected farrow: ${r.expectedFarrowingDate.toDate().toString().split(' ')[0]}\n'
+                  'Boar: ${r.boarId}',
+                ),
+                isThreeLine: true,
+                trailing: r.status == BreedingStatus.planned
+                    ? IconButton(
+                        icon: const Icon(Icons.fact_check),
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('Pregnancy check'),
+                              content: const Text('Was the sow confirmed pregnant?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('No / Failed')),
+                                TextButton(onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Yes / Confirmed')),
+                              ],
+                            ),
+                          );
+                          if (confirmed == null) return;
+                          final user = ref.read(authStateChangesProvider).asData?.value;
+                          final name = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+                          if (user == null) return;
+                          await ref.read(breedingRepositoryProvider).recordPregnancyCheck(
+                            farmId: pig.farmId, sowId: pig.id, breedingRecordId: r.id,
+                            confirmed: confirmed, checkDate: Timestamp.now(),
+                            actorUserId: user.uid, actorDisplayName: name,
+                            sowTagId: pig.tagId, areaId: pig.currentAreaId,
+                          );
+                        },
+                      )
+                    : null,
+              ),
+            )).toList(),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+}
+```
+
+Add imports at top of file:
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../domain/breeding_record.dart';
+import 'breeding_log_screen.dart';
+```
+
+- [ ] **Step 8.9: Run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+
+Manual smoke: create a sow, navigate to her Breeding tab, "Log breeding" with a boar, watch the expected farrowing date display, save. Verify in Firestore: `pigs/{sowId}/breeding_records/{id}` exists, and three tasks exist in `tasks/` with the right due dates. Tap the fact-check icon on the breeding card; pick "Yes" → status changes to "Confirmed pregnant", pregnancy_check task marked completed.
+
+```bash
+git add -A
+git commit -m "feat(breeding,tasks): breeding cycle + automated task generation
+
+- BreedingRecord + 114-day gestation auto-compute
+- TaskGenerator emits pregnancy_check (+30d), farrowing_prep (+107d),
+  farrowing_expected (+114d) atomically with breeding write
+- Idempotent task IDs (br_{breedingId}_{suffix}) prevent duplicates on re-run
+- Pregnancy check completes/skips downstream tasks based on outcome
+- Breeding log screen + per-sow breeding history tab"
+```
+
+---
+
+_(Tasks 9–17 continue. Each follows the same TDD + commit cadence; remaining tasks cover Farrowing & Litter Batches, Health Records, Mortality, Tasks UI, Shifts, Activity Feed, Yield Reports, Farm Layout, Dashboard + Offline + Photo Queue Flushing, and Firestore Security Rules.)_

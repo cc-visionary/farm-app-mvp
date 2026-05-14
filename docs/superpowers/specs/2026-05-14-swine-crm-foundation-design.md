@@ -506,11 +506,13 @@ Code paths referring to `Animal`, `AnimalEvent`, `Location` are deleted, not ref
 
 - **B — Operations & Financials:** feed inventory, medicine inventory, cost tracking per batch, sales records, profitability report.
 - **C — Bilingual & polish:** EN/Tagalog via `flutter_localizations` + `.arb`, icon-driven empty states, low-end Android perf audit.
-- **D — Notifications & telemedicine:** FCM push for tasks & overdue alerts; vet appointment scheduling; async photo-based consults.
+- **D — Notifications, telemedicine & Daily Checkup:** FCM push for tasks & overdue alerts; vet appointment scheduling; async photo-based consults; **Daily Checkup** workflow (worker walks pens once per shift and logs pen-level status — directly inspired by EveryPig).
 - **E — Poultry module:** replicate framework for layers/broilers, add egg collection.
 - **F — Marketplace:** B2B feed/pharma listings, buyer connections.
 
 Each gets its own spec + plan + build cycle.
+
+**Primary UX inspiration:** [EveryPig](https://www.everypig.com/). Their "made for people who hate technology" approach drives our design constraints — clean cards, big tap targets, minimal decoration, communication-centric (Farmfeed → our Activity Feed), photo-first for health issues. Visual tone: calm greens, generous whitespace, content over chrome.
 
 ## 14. Success criteria
 

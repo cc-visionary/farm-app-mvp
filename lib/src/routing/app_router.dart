@@ -16,6 +16,7 @@ import '../features/farms/presentation/farm_setup_screen.dart';
 import '../features/inventory/presentation/inventory_list_screen.dart';
 import '../features/layout/farm_layout_screen.dart';
 import '../features/pigs/presentation/pigs_list_screen.dart';
+import '../features/purchases/presentation/purchases_list_screen.dart';
 import '../features/shifts/presentation/shifts_screen.dart';
 import '../features/tasks/presentation/tasks_screen.dart';
 import '../features/team/application/team_providers.dart';
@@ -69,6 +70,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/equipment', builder: (c, s) => const EquipmentListScreen()),
       GoRoute(path: '/inventory', builder: (c, s) => const InventoryListScreen()),
       GoRoute(path: '/pigs', builder: (c, s) => const PigsListScreen()),
+      GoRoute(path: '/purchases', builder: (c, s) => const PurchasesListScreen()),
       GoRoute(path: '/tasks', builder: (c, s) => const TasksScreen()),
       GoRoute(path: '/shifts', builder: (c, s) => const ShiftsScreen()),
       GoRoute(path: '/activity', builder: (c, s) => const ActivityScreen()),

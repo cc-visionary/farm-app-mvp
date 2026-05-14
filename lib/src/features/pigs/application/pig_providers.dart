@@ -5,11 +5,13 @@ import '../data/batch_repository.dart';
 import '../data/breeding_repository.dart';
 import '../data/farrowing_repository.dart';
 import '../data/health_repository.dart';
+import '../data/mortality_repository.dart';
 import '../data/pig_repository.dart';
 import '../domain/batch.dart';
 import '../domain/breeding_record.dart';
 import '../domain/farrowing_record.dart';
 import '../domain/health_record.dart';
+import '../domain/mortality_record.dart';
 import '../domain/pig.dart';
 
 final pigRepositoryProvider = Provider<PigRepository>(
@@ -95,4 +97,24 @@ final healthForPigProvider = StreamProvider.family<List<HealthRecord>,
         farmId: args.farmId,
         pigId: args.pigId,
       );
+});
+
+final mortalityRepositoryProvider = Provider<MortalityRepository>(
+  (ref) => MortalityRepository(
+    ref.watch(firestoreProvider),
+    ref.watch(activityRepositoryProvider),
+  ),
+);
+
+final mortalityForPigProvider = StreamProvider.family<MortalityRecord?,
+    ({String farmId, String pigId})>((ref, args) {
+  return ref.watch(mortalityRepositoryProvider).streamMortality(
+        farmId: args.farmId,
+        pigId: args.pigId,
+      );
+});
+
+final allMortalitiesProvider =
+    StreamProvider.family<List<MortalityRecord>, String>((ref, farmId) {
+  return ref.watch(mortalityRepositoryProvider).streamAllMortalities(farmId);
 });

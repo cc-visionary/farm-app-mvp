@@ -11,6 +11,7 @@ import '../domain/pig.dart';
 import 'breeding_log_screen.dart';
 import 'farrowing_log_screen.dart';
 import 'health_log_screen.dart';
+import 'mortality_log_screen.dart';
 
 class PigDetailScreen extends ConsumerWidget {
   const PigDetailScreen({super.key, required this.pigId});
@@ -101,6 +102,25 @@ class _ProfileTab extends StatelessWidget {
         if (pig.currentPenId != null) _row('Pen', pig.currentPenId!),
         if (pig.notes != null && pig.notes!.trim().isNotEmpty)
           _row('Notes', pig.notes!),
+        if (pig.status == PigStatus.active) ...[
+          const SizedBox(height: 24),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.heart_broken, color: Colors.red),
+            label: const Text(
+              'Mark deceased',
+              style: TextStyle(color: Colors.red),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.red),
+            ),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MortalityLogScreen(pig: pig),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

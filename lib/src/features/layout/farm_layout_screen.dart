@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 
+import '../../core/widgets/empty_state.dart';
 import '../areas/application/area_providers.dart';
 import '../areas/domain/area.dart';
 import '../areas/domain/pen.dart';
@@ -16,29 +18,43 @@ import '../tasks/application/task_providers.dart';
 class FarmLayoutScreen extends ConsumerWidget {
   const FarmLayoutScreen({super.key});
 
-  Color _penColor(Pen p) {
-    if (p.capacity == null) return Colors.grey.shade300;
+  Color _penColor(BuildContext context, Pen p) {
+    final cs = Theme.of(context).colorScheme;
+    if (p.capacity == null) return cs.surfaceContainerHigh;
     final r = p.occupancyRatio;
-    if (r <= 0.5) return Colors.green.shade300;
-    if (r <= 0.8) return Colors.yellow.shade400;
-    return Colors.red.shade400;
+    if (r <= 0.5) return cs.primaryContainer;
+    if (r <= 0.8) return cs.tertiaryContainer;
+    return cs.errorContainer;
   }
 
-  Color _eqColor(EquipmentStatus s) {
+  Color _penFg(BuildContext context, Pen p) {
+    final cs = Theme.of(context).colorScheme;
+    if (p.capacity == null) return cs.onSurface;
+    final r = p.occupancyRatio;
+    if (r <= 0.5) return cs.onPrimaryContainer;
+    if (r <= 0.8) return cs.onTertiaryContainer;
+    return cs.onErrorContainer;
+  }
+
+  Color _eqStatusDot(BuildContext context, EquipmentStatus s) {
+    final cs = Theme.of(context).colorScheme;
     switch (s) {
       case EquipmentStatus.inUse:
-        return Colors.green;
+        return cs.primary;
       case EquipmentStatus.available:
-        return Colors.grey;
+        return cs.outline;
       case EquipmentStatus.needsRepair:
-        return Colors.red;
+        return cs.error;
       case EquipmentStatus.retired:
-        return Colors.black26;
+        return cs.onSurfaceVariant;
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return const SizedBox.shrink();
@@ -59,9 +75,14 @@ class FarmLayoutScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Farm layout')),
       body: areas.isEmpty
-          ? const Center(child: Text('No areas yet.'))
+          ? const EmptyState(
+              icon: Iconsax.element_3,
+              title: 'No areas yet',
+              subtitle:
+                  'Add areas and pens to see your farm laid out at a glance.',
+            )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               itemCount: areas.length,
               itemBuilder: (_, i) {
                 final a = areas[i];
@@ -70,14 +91,16 @@ class FarmLayoutScreen extends ConsumerWidget {
                 final areaEq =
                     equipment.where((e) => e.areaId == a.id).toList();
                 final areaPigs = pigs
-                    .where((p) =>
-                        p.currentAreaId == a.id &&
-                        p.status == PigStatus.active)
+                    .where(
+                      (p) =>
+                          p.currentAreaId == a.id &&
+                          p.status == PigStatus.active,
+                    )
                     .length;
                 final cap = areaPens.fold<int?>(
-                    null,
-                    (s, p) =>
-                        p.capacity == null ? s : (s ?? 0) + p.capacity!);
+                  null,
+                  (s, p) => p.capacity == null ? s : (s ?? 0) + p.capacity!,
+                );
                 final taskCount =
                     tasks.where((t) => t.relatedAreaId == a.id).length;
                 final activeShifts =
@@ -99,61 +122,94 @@ class FarmLayoutScreen extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 a.name,
-                                style:
-                                    Theme.of(context).textTheme.headlineSmall,
+                                style: textTheme.headlineSmall,
                               ),
                             ),
-                            Chip(label: Text(a.purpose.label)),
+                            Chip(
+                              label: Text(a.purpose.label),
+                              padding: EdgeInsets.zero,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Pigs: $areaPigs / ${cap ?? "—"}',
+                        Row(
+                          children: [
+                            Icon(
+                              Iconsax.pet,
+                              size: 16,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$areaPigs / ${cap ?? "—"} pigs',
+                              style: textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
-                        if (taskCount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '$taskCount pending task${taskCount == 1 ? "" : "s"}',
-                              style: const TextStyle(color: Colors.orange),
-                            ),
+                        if (taskCount > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Iconsax.task_square,
+                                size: 16,
+                                color: colorScheme.tertiary,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '$taskCount pending task${taskCount == 1 ? "" : "s"}',
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.tertiary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
+                        ],
                         if (areaPens.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Pens',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                          const SizedBox(height: 16),
+                          Text(
+                            'PENS',
+                            style: textTheme.labelMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.0,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 8),
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: areaPens
                                 .map(
                                   (p) => Container(
-                                    padding: const EdgeInsets.all(8),
+                                    width: 88,
+                                    padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: _penColor(p),
-                                      borderRadius: BorderRadius.circular(6),
+                                      color: _penColor(context, p),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           p.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 11,
+                                          style: textTheme.labelLarge?.copyWith(
+                                            color: _penFg(context, p),
+                                            fontWeight: FontWeight.w700,
                                           ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
+                                        const SizedBox(height: 4),
                                         Text(
                                           p.capacity == null
                                               ? '${p.currentOccupancy}'
                                               : '${p.currentOccupancy}/${p.capacity}',
-                                          style: const TextStyle(fontSize: 11),
+                                          style: textTheme.bodyMedium?.copyWith(
+                                            color: _penFg(context, p),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -163,59 +219,89 @@ class FarmLayoutScreen extends ConsumerWidget {
                           ),
                         ],
                         if (areaEq.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Equipment',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                          const SizedBox(height: 16),
+                          Text(
+                            'EQUIPMENT',
+                            style: textTheme.labelMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.0,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 8),
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: areaEq
                                 .map(
-                                  (eq) => Chip(
-                                    label: Text(
-                                      eq.name,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.white,
+                                  (eq) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: colorScheme.outline,
                                       ),
                                     ),
-                                    backgroundColor: _eqColor(eq.status),
-                                    padding: EdgeInsets.zero,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: _eqStatusDot(
+                                              context,
+                                              eq.status,
+                                            ),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          eq.name,
+                                          style: textTheme.labelMedium,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 )
                                 .toList(),
                           ),
                         ],
                         if (activeWorkerIds.isNotEmpty) ...[
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 16),
                           Row(
                             children: [
-                              const Text(
-                                'On shift:',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
+                              Text(
+                                'ON SHIFT',
+                                style: textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.0,
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 12),
                               ...activeWorkerIds.take(5).map(
                                     (id) => Padding(
                                       padding:
                                           const EdgeInsets.only(right: 4),
                                       child: CircleAvatar(
                                         radius: 12,
+                                        backgroundColor:
+                                            colorScheme.primaryContainer,
                                         child: Text(
                                           id.isEmpty
                                               ? '?'
                                               : id[0].toUpperCase(),
                                           style:
-                                              const TextStyle(fontSize: 11),
+                                              textTheme.labelMedium?.copyWith(
+                                            color: colorScheme.primary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ),

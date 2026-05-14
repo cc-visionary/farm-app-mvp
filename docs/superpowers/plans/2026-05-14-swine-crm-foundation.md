@@ -9094,4 +9094,1384 @@ git commit -m "feat(activity): activity feed widget + full-page activity screen
 
 ---
 
-_(Tasks 15–17 continue: Yield Reports with charts, Farm Layout spatial view, Real Dashboard with offline banner and photo-queue flushing, then Firestore Security Rules.)_
+---
+
+## Task 15: Yield Reports
+
+**Goal:** Replace the placeholder Reports tab with a Yield Reports screen showing herd productivity, growth, mortality, and output metrics, computed entirely client-side from streamed data. Charts via `fl_chart`.
+
+**Files:**
+- Create:
+  - `lib/src/features/yield/yield_metrics.dart`
+  - `lib/src/features/yield/yield_calculator.dart`
+  - `lib/src/features/yield/yield_providers.dart`
+  - `lib/src/features/yield/yield_screen.dart`
+  - `test/features/yield/yield_calculator_test.dart`
+
+### Steps
+
+- [ ] **Step 15.1: Period + metrics types**
+
+`lib/src/features/yield/yield_metrics.dart`:
+
+```dart
+enum YieldPeriod {
+  d7('7d', Duration(days: 7)),
+  d30('30d', Duration(days: 30)),
+  d90('90d', Duration(days: 90)),
+  ytd('YTD', Duration.zero),
+  all('All-time', Duration.zero);
+
+  const YieldPeriod(this.label, this.duration);
+  final String label;
+  final Duration duration;
+
+  DateTime startFrom(DateTime now) {
+    switch (this) {
+      case YieldPeriod.d7:
+      case YieldPeriod.d30:
+      case YieldPeriod.d90:
+        return now.subtract(duration);
+      case YieldPeriod.ytd:
+        return DateTime(now.year, 1, 1);
+      case YieldPeriod.all:
+        return DateTime(1970);
+    }
+  }
+}
+
+class HerdProductivity {
+  final double avgLitterSize;
+  final double avgStillborns;
+  final double stillbirthRate;
+  final double preWeaningMortalityRate;
+  final double breedingSuccessRate;
+  final double psyEstimate;
+  final int totalFarrowings;
+  const HerdProductivity({
+    required this.avgLitterSize, required this.avgStillborns,
+    required this.stillbirthRate, required this.preWeaningMortalityRate,
+    required this.breedingSuccessRate, required this.psyEstimate,
+    required this.totalFarrowings,
+  });
+  static const empty = HerdProductivity(
+    avgLitterSize: 0, avgStillborns: 0, stillbirthRate: 0,
+    preWeaningMortalityRate: 0, breedingSuccessRate: 0,
+    psyEstimate: 0, totalFarrowings: 0,
+  );
+}
+
+class GrowthMetrics {
+  final double avgDailyGainKg;
+  final int activeGrowFinishCount;
+  const GrowthMetrics({required this.avgDailyGainKg, required this.activeGrowFinishCount});
+  static const empty = GrowthMetrics(avgDailyGainKg: 0, activeGrowFinishCount: 0);
+}
+
+class MortalityMetrics {
+  final double overallMortalityRate;
+  final Map<String, int> byArea;
+  final List<MapEntry<String, int>> topCauses;
+  final int totalDeaths;
+  const MortalityMetrics({
+    required this.overallMortalityRate, required this.byArea,
+    required this.topCauses, required this.totalDeaths,
+  });
+  static const empty = MortalityMetrics(
+    overallMortalityRate: 0, byArea: {}, topCauses: [], totalDeaths: 0,
+  );
+}
+
+class OutputMetrics {
+  final int sold;
+  final int culled;
+  const OutputMetrics({required this.sold, required this.culled});
+  static const empty = OutputMetrics(sold: 0, culled: 0);
+}
+```
+
+- [ ] **Step 15.2: YieldCalculator (pure functions)**
+
+`lib/src/features/yield/yield_calculator.dart`:
+
+```dart
+import '../pigs/domain/breeding_record.dart';
+import '../pigs/domain/farrowing_record.dart';
+import '../pigs/domain/mortality_record.dart';
+import '../pigs/domain/pig.dart';
+import 'yield_metrics.dart';
+
+class YieldCalculator {
+  YieldCalculator._();
+
+  static HerdProductivity herdProductivity({
+    required List<FarrowingRecord> farrowings,
+    required List<BreedingRecord> breedings,
+    required int activeSowCount,
+    required DateTime periodStart,
+    required DateTime now,
+  }) {
+    final inPeriod = farrowings.where((f) =>
+      f.date.toDate().isAfter(periodStart) || f.date.toDate().isAtSameMomentAs(periodStart)).toList();
+    if (inPeriod.isEmpty) return HerdProductivity.empty;
+
+    final totalLive = inPeriod.fold<int>(0, (s, f) => s + f.liveBorn);
+    final totalStill = inPeriod.fold<int>(0, (s, f) => s + f.stillborn);
+    final avgLitter = totalLive / inPeriod.length;
+    final avgStill = totalStill / inPeriod.length;
+    final stillRate = (totalLive + totalStill) == 0
+        ? 0.0 : totalStill / (totalLive + totalStill);
+    // Pre-weaning mortality rate is not tracked separately yet; placeholder 0.
+    const preWean = 0.0;
+
+    final breedingsInPeriod = breedings.where((b) =>
+      b.inseminationDate.toDate().isAfter(periodStart)).toList();
+    final confirmed = breedingsInPeriod.where((b) => b.confirmed).length;
+    final successRate = breedingsInPeriod.isEmpty ? 0.0 : confirmed / breedingsInPeriod.length;
+
+    // PSY estimate: (live born in period) extrapolated to a year / active sow count.
+    final daysInPeriod = now.difference(periodStart).inDays.clamp(1, 365);
+    final yearlyExtrapolation = (totalLive / daysInPeriod) * 365;
+    final psy = activeSowCount == 0 ? 0.0 : yearlyExtrapolation / activeSowCount;
+
+    return HerdProductivity(
+      avgLitterSize: avgLitter, avgStillborns: avgStill,
+      stillbirthRate: stillRate, preWeaningMortalityRate: preWean,
+      breedingSuccessRate: successRate, psyEstimate: psy,
+      totalFarrowings: inPeriod.length,
+    );
+  }
+
+  static GrowthMetrics growth({
+    required List<Pig> pigs,
+    required DateTime now,
+  }) {
+    final growers = pigs.where((p) =>
+      (p.stage == PigStage.grower || p.stage == PigStage.finisher) &&
+      p.status == PigStatus.active).toList();
+    final adgs = <double>[];
+    for (final p in growers) {
+      if (p.currentWeight == null || p.weightUpdatedAt == null) continue;
+      final birthDate = p.birthDate.toDate();
+      final lastWeighDate = p.weightUpdatedAt!.toDate();
+      final days = lastWeighDate.difference(birthDate).inDays;
+      if (days <= 0) continue;
+      adgs.add(p.currentWeight! / days);
+    }
+    final avgAdg = adgs.isEmpty ? 0.0 : adgs.reduce((a, b) => a + b) / adgs.length;
+    return GrowthMetrics(
+      avgDailyGainKg: avgAdg,
+      activeGrowFinishCount: growers.length,
+    );
+  }
+
+  static MortalityMetrics mortality({
+    required List<MortalityRecord> mortalities,
+    required List<Pig> allPigs,
+    required Map<String, String> pigIdToAreaId,
+    required DateTime periodStart,
+  }) {
+    final inPeriod = mortalities.where((m) =>
+      m.date.toDate().isAfter(periodStart)).toList();
+    final herdAtStart = allPigs.length;
+    final rate = herdAtStart == 0 ? 0.0 : inPeriod.length / herdAtStart;
+    final byArea = <String, int>{};
+    final causeCounts = <String, int>{};
+    for (final m in inPeriod) {
+      final area = pigIdToAreaId[m.pigId] ?? 'unknown';
+      byArea[area] = (byArea[area] ?? 0) + 1;
+      final c = m.cause ?? 'Unknown';
+      causeCounts[c] = (causeCounts[c] ?? 0) + 1;
+    }
+    final topCauses = causeCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return MortalityMetrics(
+      overallMortalityRate: rate,
+      byArea: byArea,
+      topCauses: topCauses.take(3).toList(),
+      totalDeaths: inPeriod.length,
+    );
+  }
+
+  static OutputMetrics output({
+    required List<Pig> pigs,
+    required DateTime periodStart,
+  }) {
+    // We don't track sale/cull date separately yet; use updatedAt as a proxy.
+    final inPeriod = pigs.where((p) =>
+      p.updatedAt.toDate().isAfter(periodStart)).toList();
+    final sold = inPeriod.where((p) => p.status == PigStatus.sold).length;
+    final culled = inPeriod.where((p) => p.status == PigStatus.culled).length;
+    return OutputMetrics(sold: sold, culled: culled);
+  }
+}
+```
+
+Test (`test/features/yield/yield_calculator_test.dart`):
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/pigs/domain/breeding_record.dart';
+import 'package:farm_app/src/features/pigs/domain/farrowing_record.dart';
+import 'package:farm_app/src/features/pigs/domain/mortality_record.dart';
+import 'package:farm_app/src/features/pigs/domain/pig.dart';
+import 'package:farm_app/src/features/yield/yield_calculator.dart';
+
+void main() {
+  test('herdProductivity averages litter size and stillbirth rate', () {
+    final now = DateTime(2026, 5, 14);
+    final start = now.subtract(const Duration(days: 30));
+    final farrowings = [
+      _farr(date: now.subtract(const Duration(days: 5)), live: 10, still: 1),
+      _farr(date: now.subtract(const Duration(days: 10)), live: 12, still: 0),
+      _farr(date: now.subtract(const Duration(days: 15)), live: 8, still: 2),
+    ];
+    final result = YieldCalculator.herdProductivity(
+      farrowings: farrowings, breedings: const [],
+      activeSowCount: 5, periodStart: start, now: now,
+    );
+    expect(result.avgLitterSize, closeTo(10, 0.01));
+    expect(result.stillbirthRate, closeTo(3 / 33, 0.01));
+    expect(result.totalFarrowings, 3);
+  });
+
+  test('herdProductivity empty period returns zeros', () {
+    final r = YieldCalculator.herdProductivity(
+      farrowings: const [], breedings: const [],
+      activeSowCount: 5, periodStart: DateTime(2026, 1, 1),
+      now: DateTime(2026, 5, 14),
+    );
+    expect(r.avgLitterSize, 0);
+  });
+
+  test('growth computes mean ADG', () {
+    final now = DateTime(2026, 5, 14);
+    final pigs = [
+      _pig(stage: PigStage.grower, status: PigStatus.active,
+        birthDate: now.subtract(const Duration(days: 100)),
+        currentWeight: 50, weightUpdatedAt: now),
+      _pig(stage: PigStage.finisher, status: PigStatus.active,
+        birthDate: now.subtract(const Duration(days: 200)),
+        currentWeight: 100, weightUpdatedAt: now),
+    ];
+    final g = YieldCalculator.growth(pigs: pigs, now: now);
+    // ADG: 50/100=0.5, 100/200=0.5 → mean 0.5
+    expect(g.avgDailyGainKg, closeTo(0.5, 0.01));
+    expect(g.activeGrowFinishCount, 2);
+  });
+
+  test('mortality rate', () {
+    final now = DateTime(2026, 5, 14);
+    final start = now.subtract(const Duration(days: 30));
+    final morts = [
+      _mort(now.subtract(const Duration(days: 5)), pigId: 'p1', cause: 'Respiratory'),
+      _mort(now.subtract(const Duration(days: 10)), pigId: 'p2', cause: 'Respiratory'),
+      _mort(now.subtract(const Duration(days: 15)), pigId: 'p3', cause: 'Accident'),
+    ];
+    final allPigs = List.generate(20, (i) => _pig(
+      birthDate: now.subtract(const Duration(days: 100)),
+      stage: PigStage.grower, status: PigStatus.active,
+      currentWeight: null, weightUpdatedAt: null,
+    ));
+    final m = YieldCalculator.mortality(
+      mortalities: morts, allPigs: allPigs,
+      pigIdToAreaId: {'p1': 'a1', 'p2': 'a1', 'p3': 'a2'},
+      periodStart: start,
+    );
+    expect(m.totalDeaths, 3);
+    expect(m.overallMortalityRate, closeTo(3 / 20, 0.01));
+    expect(m.byArea['a1'], 2);
+    expect(m.topCauses.first.key, 'Respiratory');
+  });
+}
+
+FarrowingRecord _farr({required DateTime date, required int live, required int still}) =>
+  FarrowingRecord(
+    id: 'x', farmId: 'f', sowId: 's', breedingRecordId: 'br',
+    date: Timestamp.fromDate(date),
+    liveBorn: live, stillborn: still, mummified: 0,
+    avgBirthWeightKg: null, litterBatchId: null, notes: null,
+    createdBy: 'u', createdAt: Timestamp.now(),
+  );
+
+Pig _pig({
+  required DateTime birthDate, required PigStage stage, required PigStatus status,
+  double? currentWeight, DateTime? weightUpdatedAt,
+}) => Pig(
+  id: 'x', farmId: 'f', tagId: 't', sex: PigSex.male, breed: 'y',
+  birthDate: Timestamp.fromDate(birthDate),
+  sireId: null, damId: null, stage: stage, status: status,
+  currentAreaId: 'a', currentPenId: null,
+  currentWeight: currentWeight,
+  weightUpdatedAt: weightUpdatedAt == null ? null : Timestamp.fromDate(weightUpdatedAt),
+  photoUrl: null, notes: null,
+  createdBy: 'u', createdAt: Timestamp.now(),
+  updatedAt: Timestamp.fromDate(birthDate.add(const Duration(days: 1))),
+);
+
+MortalityRecord _mort(DateTime date, {required String pigId, required String cause}) =>
+  MortalityRecord(
+    id: 'm', farmId: 'f', pigId: pigId,
+    date: Timestamp.fromDate(date), cause: cause,
+    photoUrls: const [], notes: null,
+    createdBy: 'u', createdAt: Timestamp.now(),
+  );
+```
+
+- [ ] **Step 15.3: Providers + screen**
+
+`lib/src/features/yield/yield_providers.dart`:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../pigs/application/pig_providers.dart';
+import '../pigs/domain/breeding_record.dart';
+import '../pigs/domain/pig.dart';
+import 'yield_calculator.dart';
+import 'yield_metrics.dart';
+
+final selectedPeriodProvider = StateProvider<YieldPeriod>((_) => YieldPeriod.d30);
+
+final yieldHerdProductivityProvider =
+    Provider.family<HerdProductivity, String>((ref, farmId) {
+  final period = ref.watch(selectedPeriodProvider);
+  final now = DateTime.now();
+  final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+  final farrowings = ref.watch(allFarrowingsProvider(farmId)).asData?.value ?? const [];
+  // Collection-group all breeding records.
+  // For now, derive activeSowCount from pigs.
+  final activeSows = pigs.where((p) =>
+    p.sex == PigSex.female && p.stage == PigStage.sow &&
+    p.status == PigStatus.active).length;
+  return YieldCalculator.herdProductivity(
+    farrowings: farrowings, breedings: const <BreedingRecord>[],
+    activeSowCount: activeSows,
+    periodStart: period.startFrom(now), now: now,
+  );
+});
+
+final yieldGrowthProvider = Provider.family<GrowthMetrics, String>((ref, farmId) {
+  final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+  return YieldCalculator.growth(pigs: pigs, now: DateTime.now());
+});
+
+final yieldMortalityProvider = Provider.family<MortalityMetrics, String>((ref, farmId) {
+  final period = ref.watch(selectedPeriodProvider);
+  final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+  final morts = ref.watch(allMortalitiesProvider(farmId)).asData?.value ?? const [];
+  return YieldCalculator.mortality(
+    mortalities: morts, allPigs: pigs,
+    pigIdToAreaId: {for (final p in pigs) p.id: p.currentAreaId},
+    periodStart: period.startFrom(DateTime.now()),
+  );
+});
+
+final yieldOutputProvider = Provider.family<OutputMetrics, String>((ref, farmId) {
+  final period = ref.watch(selectedPeriodProvider);
+  final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+  return YieldCalculator.output(
+    pigs: pigs, periodStart: period.startFrom(DateTime.now()),
+  );
+});
+```
+
+`lib/src/features/yield/yield_screen.dart`:
+
+```dart
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../farms/application/farm_providers.dart';
+import 'yield_metrics.dart';
+import 'yield_providers.dart';
+
+class YieldScreen extends ConsumerWidget {
+  const YieldScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final period = ref.watch(selectedPeriodProvider);
+    final hp = ref.watch(yieldHerdProductivityProvider(farmId));
+    final g = ref.watch(yieldGrowthProvider(farmId));
+    final m = ref.watch(yieldMortalityProvider(farmId));
+    final o = ref.watch(yieldOutputProvider(farmId));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Yield reports')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Wrap(spacing: 8, children: YieldPeriod.values.map((p) => ChoiceChip(
+            label: Text(p.label),
+            selected: period == p,
+            onSelected: (_) => ref.read(selectedPeriodProvider.notifier).state = p,
+          )).toList()),
+          const SizedBox(height: 16),
+          _Card(title: 'Herd productivity', children: [
+            _row('Total farrowings', hp.totalFarrowings.toString()),
+            _row('Avg litter size', hp.avgLitterSize.toStringAsFixed(1)),
+            _row('Avg stillborns / litter', hp.avgStillborns.toStringAsFixed(1)),
+            _row('Stillbirth rate', _pct(hp.stillbirthRate)),
+            _row('Breeding success rate', _pct(hp.breedingSuccessRate)),
+            _row('PSY (estimate, annualized)', hp.psyEstimate.toStringAsFixed(1)),
+          ]),
+          _Card(title: 'Growth & finishing', children: [
+            _row('Active grow/finish pigs', g.activeGrowFinishCount.toString()),
+            _row('Average daily gain', '${g.avgDailyGainKg.toStringAsFixed(2)} kg/d'),
+          ]),
+          _Card(title: 'Mortality', children: [
+            _row('Total deaths (period)', m.totalDeaths.toString()),
+            _row('Overall mortality rate', _pct(m.overallMortalityRate)),
+            if (m.topCauses.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text('Top causes:', style: TextStyle(fontWeight: FontWeight.bold)),
+              ...m.topCauses.map((c) => Text('  • ${c.key}: ${c.value}')),
+            ],
+            if (m.byArea.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('By area:', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 180, child: _AreaBarChart(byArea: m.byArea)),
+            ],
+          ]),
+          _Card(title: 'Output', children: [
+            _row('Sold (in period)', o.sold.toString()),
+            _row('Culled (in period)', o.culled.toString()),
+            const Text('Sales revenue tracking comes in Sub-project B.',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [
+      Expanded(child: Text(label)),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+    ]),
+  );
+
+  String _pct(double v) => '${(v * 100).toStringAsFixed(1)}%';
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          const Divider(),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
+
+class _AreaBarChart extends StatelessWidget {
+  const _AreaBarChart({required this.byArea});
+  final Map<String, int> byArea;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = byArea.entries.toList();
+    return BarChart(BarChartData(
+      barGroups: List.generate(entries.length, (i) => BarChartGroupData(
+        x: i,
+        barRods: [BarChartRodData(toY: entries[i].value.toDouble(), color: Colors.red)],
+      )),
+      titlesData: FlTitlesData(
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true, reservedSize: 30,
+          getTitlesWidget: (v, _) => Text(
+            entries[v.toInt()].key.substring(0, entries[v.toInt()].key.length.clamp(0, 4)),
+            style: const TextStyle(fontSize: 10),
+          ),
+        )),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+      gridData: const FlGridData(show: true),
+      borderData: FlBorderData(show: false),
+    ));
+  }
+}
+```
+
+- [ ] **Step 15.4: Route + commit**
+
+```dart
+GoRoute(path: '/yield', builder: (c, s) => const YieldScreen()),
+```
+
+Import.
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(yield): yield reports with productivity, growth, mortality, output
+
+- YieldCalculator pure functions (PSY, ADG, stillbirth rate, mortality rate)
+- Period selector (7d/30d/90d/YTD/all-time) drives all metric cards
+- Mortality-by-area bar chart via fl_chart
+- Pure-function unit tests for every calculator path"
+```
+
+---
+
+## Task 16: Farm Layout
+
+**Goal:** Spatial overview screen — for each area, show pens with occupancy color tiles, equipment chips colored by status, pending tasks count, and active workers from today's roster.
+
+**Files:**
+- Create:
+  - `lib/src/features/layout/farm_layout_screen.dart`
+
+### Steps
+
+- [ ] **Step 16.1: Farm layout screen**
+
+`lib/src/features/layout/farm_layout_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../areas/application/area_providers.dart';
+import '../areas/domain/area.dart';
+import '../areas/domain/pen.dart';
+import '../authentication/application/auth_providers.dart';
+import '../equipment/application/equipment_providers.dart';
+import '../equipment/domain/equipment.dart';
+import '../farms/application/farm_providers.dart';
+import '../pigs/application/pig_providers.dart';
+import '../pigs/domain/pig.dart';
+import '../shifts/application/shift_providers.dart';
+import '../shifts/domain/shift.dart';
+import '../tasks/application/task_providers.dart';
+import '../team/application/team_providers.dart';
+
+class FarmLayoutScreen extends ConsumerWidget {
+  const FarmLayoutScreen({super.key});
+
+  Color _penColor(Pen p) {
+    final r = p.occupancyRatio;
+    if (p.capacity == null) return Colors.grey.shade300;
+    if (r <= 0.5) return Colors.green.shade300;
+    if (r <= 0.8) return Colors.yellow.shade400;
+    return Colors.red.shade400;
+  }
+
+  Color _eqColor(EquipmentStatus s) {
+    switch (s) {
+      case EquipmentStatus.inUse: return Colors.green;
+      case EquipmentStatus.available: return Colors.grey;
+      case EquipmentStatus.needsRepair: return Colors.red;
+      case EquipmentStatus.retired: return Colors.black26;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return const SizedBox.shrink();
+    final areas = ref.watch(areasStreamProvider(farmId)).asData?.value ?? const <Area>[];
+    final pens = ref.watch(allPensStreamProvider(farmId)).asData?.value ?? const <Pen>[];
+    final equipment = ref.watch(equipmentStreamProvider(farmId)).asData?.value ?? const <Equipment>[];
+    final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+    final tasks = ref.watch(openTasksStreamProvider(farmId)).asData?.value ?? const [];
+    final shifts = ref.watch(shiftsForDateProvider((farmId: farmId, date: DateTime.now())));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Farm layout')),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: areas.length,
+        itemBuilder: (_, i) {
+          final a = areas[i];
+          final areaPens = pens.where((p) => p.areaId == a.id).toList();
+          final areaEq = equipment.where((e) => e.areaId == a.id).toList();
+          final areaPigs = pigs.where((p) => p.currentAreaId == a.id && p.status == PigStatus.active).length;
+          final cap = areaPens.fold<int?>(null, (s, p) =>
+              p.capacity == null ? s : (s ?? 0) + p.capacity!);
+          final taskCount = tasks.where((t) => t.relatedAreaId == a.id).length;
+          final activeShifts = shifts.where((s) => s.assignedAreaId == a.id).toList();
+          final activeWorkerIds = <String>{};
+          for (final s in activeShifts) {
+            activeWorkerIds.addAll(s.assignedUserIds);
+          }
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(a.name,
+                        style: Theme.of(context).textTheme.headlineSmall)),
+                      Chip(label: Text(a.purpose.label)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Pigs: $areaPigs${cap == null ? "" : " / $cap"}'),
+                  if (taskCount > 0) Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('$taskCount pending task${taskCount == 1 ? "" : "s"}',
+                        style: const TextStyle(color: Colors.orange)),
+                  ),
+                  if (areaPens.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text('Pens', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 6, runSpacing: 6, children: areaPens.map((p) => Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _penColor(p),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(p.name, style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 11)),
+                          Text(p.capacity == null
+                              ? '${p.currentOccupancy}'
+                              : '${p.currentOccupancy}/${p.capacity}',
+                              style: const TextStyle(fontSize: 11)),
+                        ],
+                      ),
+                    )).toList()),
+                  ],
+                  if (areaEq.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text('Equipment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 6, runSpacing: 4, children: areaEq.map((eq) => Chip(
+                      label: Text(eq.name, style: const TextStyle(
+                        fontSize: 11, color: Colors.white)),
+                      backgroundColor: _eqColor(eq.status),
+                      padding: EdgeInsets.zero,
+                    )).toList()),
+                  ],
+                  if (activeWorkerIds.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('On shift:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(width: 6),
+                        ...activeWorkerIds.take(5).map((id) => Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: CircleAvatar(radius: 12, child: Text(
+                            id.isEmpty ? '?' : id[0].toUpperCase(),
+                            style: const TextStyle(fontSize: 11),
+                          )),
+                        )),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 16.2: Route + commit**
+
+```dart
+GoRoute(path: '/layout', builder: (c, s) => const FarmLayoutScreen()),
+```
+
+Import.
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(layout): farm layout spatial overview screen
+
+- Per-area cards with pen tiles colored by occupancy (green/yellow/red)
+- Equipment chips colored by status (green/grey/red/black)
+- Pig occupancy X/Y, pending task count, today's roster avatars
+- No GPS — purely structured visual summary"
+```
+
+---
+
+## Task 17: Real Dashboard + Offline Banner + Photo Queue Flushing
+
+**Goal:** Replace the placeholder home/dashboard with the real dashboard. Add offline indicator. Wire photo-queue flush on reconnect.
+
+**Files:**
+- Create:
+  - `lib/src/features/dashboard/dashboard_screen.dart`
+  - `lib/src/features/dashboard/snapshot_card.dart`
+  - `lib/src/core/widgets/offline_banner.dart`
+  - `lib/src/core/widgets/app_shell.dart`
+- Modify:
+  - `lib/src/routing/app_router.dart`
+
+### Steps
+
+- [ ] **Step 17.1: OfflineBanner + connectivity provider + queue flusher**
+
+`lib/src/core/widgets/offline_banner.dart`:
+
+```dart
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/media/media_providers.dart';
+
+final connectivityProvider = StreamProvider<List<ConnectivityResult>>(
+  (_) => Connectivity().onConnectivityChanged,
+);
+
+class OfflineBanner extends ConsumerWidget {
+  const OfflineBanner({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conn = ref.watch(connectivityProvider).asData?.value;
+    final isOffline = conn != null && conn.every((r) => r == ConnectivityResult.none);
+
+    // Side-effect: when transitioning to online, flush queued photo uploads.
+    ref.listen<AsyncValue<List<ConnectivityResult>>>(connectivityProvider, (prev, next) {
+      final wasOffline = prev?.asData?.value != null &&
+          prev!.asData!.value.every((r) => r == ConnectivityResult.none);
+      final nowOnline = next.asData?.value != null &&
+          next.asData!.value.any((r) => r != ConnectivityResult.none);
+      if (wasOffline && nowOnline) {
+        final svc = ref.read(photoUploadServiceProvider);
+        svc?.flushQueue();
+      }
+    });
+
+    if (!isOffline) return const SizedBox.shrink();
+    return Material(
+      color: Colors.orange.shade700,
+      child: const SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(children: [
+            Icon(Icons.cloud_off, color: Colors.white, size: 16),
+            SizedBox(width: 8),
+            Text('Offline — changes will sync when you reconnect',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 17.2: Snapshot card (dashboard metrics)**
+
+`lib/src/features/dashboard/snapshot_card.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../farms/application/farm_providers.dart';
+import '../pigs/application/pig_providers.dart';
+import '../pigs/domain/pig.dart';
+
+class SnapshotCard extends ConsumerWidget {
+  const SnapshotCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+    final farrowings = ref.watch(allFarrowingsProvider(farmId)).asData?.value ?? const [];
+    final morts = ref.watch(allMortalitiesProvider(farmId)).asData?.value ?? const [];
+
+    final active = pigs.where((p) => p.status == PigStatus.active).toList();
+    final sows = active.where((p) => p.stage == PigStage.sow).length;
+    final boars = active.where((p) => p.stage == PigStage.boar).length;
+    // Active gestations: count of sows with farrowings in the next ~114 days...
+    // Simpler: count of farrowing_expected tasks open. For MVP, derive from breeding records.
+    // For now, expose total pigs, sows, boars, farrowings in last 30d, mortalities in last 30d.
+    final now = DateTime.now();
+    final last30 = now.subtract(const Duration(days: 30));
+    final recentFarr = farrowings.where((f) => f.date.toDate().isAfter(last30)).length;
+    final recentMort = morts.where((m) => m.date.toDate().isAfter(last30)).length;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Swine snapshot',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Divider(),
+            _row('Total pigs (active)', active.length.toString()),
+            _row('Sows', sows.toString()),
+            _row('Boars', boars.toString()),
+            _row('Farrowings (last 30d)', recentFarr.toString()),
+            _row('Mortalities (last 30d)', recentMort.toString()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [
+      Expanded(child: Text(label)),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+    ]),
+  );
+}
+```
+
+- [ ] **Step 17.3: Dashboard screen**
+
+`lib/src/features/dashboard/dashboard_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../activity/presentation/activity_feed_widget.dart';
+import '../authentication/application/auth_providers.dart';
+import '../farms/application/farm_providers.dart';
+import '../farms/presentation/farm_switcher.dart';
+import '../shifts/presentation/roster_widget.dart';
+import '../tasks/application/task_providers.dart';
+import '../tasks/domain/task.dart';
+import 'snapshot_card.dart';
+
+class DashboardScreen extends ConsumerWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    final appUser = ref.watch(currentAppUserProvider).asData?.value;
+    if (farmId == null || user == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final myTasks = ref.watch(myTasksStreamProvider((farmId: farmId, userId: user.uid)));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const FarmSwitcher(),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      ),
+      drawer: const _NavDrawer(),
+      body: RefreshIndicator(
+        onRefresh: () async { /* streams auto-refresh; no-op */ },
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text('Hello${appUser?.displayName == null ? "" : ", ${appUser!.displayName}"}',
+                style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 16),
+            const SnapshotCard(),
+            const SizedBox(height: 16),
+            myTasks.when(
+              data: (tasks) => _MyTasksCard(tasks: tasks),
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 16),
+            const RosterWidget(),
+            const SizedBox(height: 16),
+            const ActivityFeedWidget(limit: 6),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MyTasksCard extends StatelessWidget {
+  const _MyTasksCard({required this.tasks});
+  final List<FarmTask> tasks;
+  @override
+  Widget build(BuildContext context) {
+    if (tasks.isEmpty) {
+      return const Card(child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('No tasks assigned to you. 🎉'),
+      ));
+    }
+    final preview = tasks.take(5).toList();
+    return Card(
+      color: Colors.lightGreen.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Your tasks today',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            ...preview.map((t) => ListTile(
+              dense: true, contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.task_alt),
+              title: Text(t.title),
+              subtitle: Text(t.dueDate.toDate().toString().split(' ')[0]),
+            )),
+            TextButton(
+              onPressed: () => GoRouter.of(context).push('/tasks'),
+              child: const Text('See all tasks →'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavDrawer extends ConsumerWidget {
+  const _NavDrawer();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Drawer(
+      child: ListView(children: [
+        const DrawerHeader(child: Text('Farm CRM')),
+        _item(context, Icons.pets, 'Pigs', '/pigs'),
+        _item(context, Icons.task_alt, 'Tasks', '/tasks'),
+        _item(context, Icons.dashboard, 'Farm layout', '/layout'),
+        _item(context, Icons.assessment, 'Yield reports', '/yield'),
+        _item(context, Icons.history, 'Activity', '/activity'),
+        const Divider(),
+        _item(context, Icons.location_on, 'Areas', '/areas'),
+        _item(context, Icons.build, 'Equipment', '/equipment'),
+        _item(context, Icons.schedule, 'Shifts', '/shifts'),
+        _item(context, Icons.people, 'Team', '/team'),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Sign out'),
+          onTap: () async {
+            await ref.read(authRepositoryProvider).signOut();
+          },
+        ),
+      ]),
+    );
+  }
+  Widget _item(BuildContext context, IconData icon, String label, String path) => ListTile(
+    leading: Icon(icon), title: Text(label),
+    onTap: () { Navigator.pop(context); GoRouter.of(context).push(path); },
+  );
+}
+```
+
+- [ ] **Step 17.4: App shell with offline banner + dashboard route**
+
+`lib/src/core/widgets/app_shell.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'offline_banner.dart';
+
+class AppShell extends StatelessWidget {
+  const AppShell({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      const OfflineBanner(),
+      Expanded(child: child),
+    ]);
+  }
+}
+```
+
+Update `app_router.dart` — replace the `/` route's placeholder body with the real dashboard, wrap routes with the shell:
+
+```dart
+GoRoute(
+  path: '/',
+  builder: (c, s) => const AppShell(child: DashboardScreen()),
+),
+```
+
+And similarly wrap the other routes with `AppShell` so the offline banner is everywhere. Or simpler: wrap at the `MaterialApp` level. For this plan, wrap each main screen.
+
+Import: `import '../core/widgets/app_shell.dart';` and `import '../features/dashboard/dashboard_screen.dart';`
+
+- [ ] **Step 17.5: Verify + commit**
+
+```bash
+flutter analyze && flutter test && flutter run -d <device>
+```
+
+Manual smoke: Sign in → see Dashboard with snapshot card showing real counts. Toggle airplane mode → orange Offline banner appears at top. Toggle off → banner disappears; if there were queued photo uploads, they flush.
+
+```bash
+git add -A
+git commit -m "feat(dashboard,core): real dashboard with snapshot/tasks/roster/feed
+
+- DashboardScreen replaces placeholder /home
+- SnapshotCard with active pig counts, recent farrowings & mortalities
+- 'Your tasks today' card with top-5 preview, link to full Tasks screen
+- AppShell with OfflineBanner; auto-flushes photo queue on reconnect
+- Drawer nav for Pigs/Tasks/Layout/Yield/Activity/Areas/Equipment/Shifts/Team/SignOut"
+```
+
+---
+
+## Task 18: Firestore Security Rules + Final Audit
+
+**Goal:** Lock down all data behind farm-membership-based rules. Verify every collection enforces the permissions matrix from spec §8. Run a full manual test pass across all four roles.
+
+**Files:**
+- Create:
+  - `firestore.rules`
+  - `storage.rules`
+  - `docs/superpowers/manual-smoke-checklist.md`
+- Modify:
+  - `firebase.json` (declare rules paths)
+
+### Steps
+
+- [ ] **Step 18.1: Firestore rules**
+
+`firestore.rules`:
+
+```javascript
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+
+    function memberDoc(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    function isMember(farmId) {
+      return exists(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid))
+          && memberDoc(farmId).data.get('removedAt', null) == null;
+    }
+
+    function role(farmId) {
+      return memberDoc(farmId).data.role;
+    }
+
+    function isOwner(farmId) { return role(farmId) == 'owner'; }
+    function isManager(farmId) { return role(farmId) == 'manager'; }
+    function isWorker(farmId) { return role(farmId) == 'worker'; }
+    function isVet(farmId) { return role(farmId) == 'vet'; }
+
+    function canWriteEquipment(farmId) { return isOwner(farmId) || isManager(farmId); }
+    function canWriteShifts(farmId) { return isOwner(farmId) || isManager(farmId); }
+    function canManageTeam(farmId) { return isOwner(farmId) || isManager(farmId); }
+    function canEditPig(farmId) { return isOwner(farmId) || isManager(farmId) || isWorker(farmId); }
+
+    // ---- users/{uid}
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ---- farms/{farmId}
+    match /farms/{farmId} {
+      allow read: if isMember(farmId);
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isOwner(farmId);
+      allow delete: if false;
+
+      // ---- members/{userId}
+      match /members/{userId} {
+        // Self-create allowed only when accepting an invitation (the client adds
+        // the matching members doc in the same batch as updating the invitation;
+        // we permit it if a corresponding accepted/pending invite exists for this email).
+        allow read: if isMember(farmId) || request.auth.uid == userId;
+        allow create: if canManageTeam(farmId)
+          || (request.auth.uid == userId
+              && exists(/databases/$(database)/documents/farms/$(farmId)/invitations/$(request.resource.data.get('_inviteId', '__none__'))));
+        allow update: if canManageTeam(farmId);
+        allow delete: if isOwner(farmId);
+      }
+
+      // ---- invitations/{id}
+      match /invitations/{id} {
+        allow read: if isMember(farmId)
+          || (isSignedIn()
+              && request.auth.token.email == resource.data.email
+              && resource.data.status == 'pending');
+        allow create: if canManageTeam(farmId);
+        allow update: if canManageTeam(farmId)
+          || (isSignedIn()
+              && request.auth.token.email == resource.data.email
+              && request.resource.data.status == 'accepted');
+        allow delete: if canManageTeam(farmId);
+      }
+
+      // ---- areas + pens
+      match /areas/{areaId} {
+        allow read: if isMember(farmId);
+        allow write: if isOwner(farmId) || isManager(farmId);
+
+        match /pens/{penId} {
+          allow read: if isMember(farmId);
+          allow write: if isOwner(farmId) || isManager(farmId);
+        }
+      }
+
+      // ---- equipment + maintenance
+      match /equipment/{equipmentId} {
+        allow read: if isMember(farmId);
+        allow create, update: if canWriteEquipment(farmId)
+          || (isWorker(farmId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['status', 'updatedAt']));
+        allow delete: if canWriteEquipment(farmId);
+
+        match /maintenance_records/{recordId} {
+          allow read: if isMember(farmId);
+          allow create: if canWriteEquipment(farmId) || isWorker(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId);
+        }
+      }
+
+      // ---- pigs + sub-collections
+      match /pigs/{pigId} {
+        allow read: if isMember(farmId);
+        allow create, update: if canEditPig(farmId);
+        allow delete: if isOwner(farmId) || isManager(farmId);
+
+        match /breeding_records/{recordId} {
+          allow read: if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+        match /farrowing_records/{recordId} {
+          allow read: if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId);
+        }
+        match /health_records/{recordId} {
+          allow read: if isMember(farmId);
+          allow create: if isOwner(farmId) || isManager(farmId) || isWorker(farmId) || isVet(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+        match /mortality_record/{recordId} {
+          allow read: if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId);
+        }
+      }
+
+      // ---- batches
+      match /batches/{batchId} {
+        allow read: if isMember(farmId);
+        allow write: if canEditPig(farmId);
+      }
+
+      // ---- tasks
+      match /tasks/{taskId} {
+        allow read: if isMember(farmId);
+        allow create: if isOwner(farmId) || isManager(farmId)
+          // Auto-generated tasks: same userId who wrote the source record may create.
+          || (canEditPig(farmId) && request.resource.data.autoGenerated == true);
+        // Anyone with read access can mark a task they're assigned to complete.
+        allow update: if isOwner(farmId) || isManager(farmId)
+          || (isMember(farmId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['status', 'completedBy', 'completedAt']));
+        allow delete: if isOwner(farmId) || isManager(farmId);
+      }
+
+      // ---- shifts
+      match /shifts/{shiftId} {
+        allow read: if isMember(farmId);
+        allow write: if canWriteShifts(farmId);
+      }
+
+      // ---- activity
+      match /activity/{entryId} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId)
+          && request.resource.data.actorUserId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
+```
+
+`storage.rules`:
+
+```javascript
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /farms/{farmId}/{allPaths=**} {
+      function isMember() {
+        return request.auth != null && firestore.exists(
+          /databases/(default)/documents/farms/$(farmId)/members/$(request.auth.uid)
+        );
+      }
+      allow read: if isMember();
+      allow write: if isMember()
+        && request.resource.size < 5 * 1024 * 1024;  // 5 MB cap per file.
+    }
+  }
+}
+```
+
+- [ ] **Step 18.2: firebase.json**
+
+Edit `firebase.json` to declare the rules:
+
+```json
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
+```
+
+(Adjust merge with any existing content as needed.)
+
+Deploy with:
+```bash
+firebase deploy --only firestore:rules,storage:rules
+```
+
+- [ ] **Step 18.3: Manual smoke checklist**
+
+`docs/superpowers/manual-smoke-checklist.md`:
+
+```markdown
+# Sub-project A — Manual Smoke Checklist
+
+Test across all four roles by creating four accounts on the same project.
+Confirm each row before merging.
+
+## Owner flow
+- [ ] Sign up → see Create Farm screen → create farm.
+- [ ] Add 3 areas (Farrowing, Gestation, Grow-Finish) each with 2 pens (capacity).
+- [ ] Add 3 equipment items (Ventilation Fan, Feeder, Generator) per area.
+- [ ] Add 4 pigs: 2 sows, 1 boar, 1 grower. Verify photos upload.
+- [ ] Log breeding on a sow → see 3 auto tasks created (preg / prep / farr).
+- [ ] Record pregnancy check confirmed → preg task completed.
+- [ ] Log farrowing → 10 live, 1 stillborn, create litter batch → breeding closed, farr task completed, litter batch visible.
+- [ ] Log a vaccination on a pig with 21-day withdrawal → withdrawal_end task at +21d.
+- [ ] Log mortality on a grower with cause "Respiratory" → pig deceased, activity entry.
+- [ ] Quick-toggle equipment status; verify status cycles.
+- [ ] Log maintenance with cost ₱500.
+- [ ] Create a daily shift assigning two future workers; see today's roster.
+- [ ] Invite a Manager (email), Worker (email), Vet (email) — verify three pending invitations.
+- [ ] Open Yield reports → all six metrics populated.
+- [ ] Open Farm Layout → all areas render with pen tiles, equipment chips, occupancy.
+
+## Manager flow
+- [ ] Sign up with the invited Manager email → see Accept Invitation → accept.
+- [ ] Add 5 more pigs.
+- [ ] Edit team — cannot promote anyone to Owner.
+- [ ] Manage areas, pens, equipment, maintenance — all allowed.
+
+## Worker flow
+- [ ] Sign up with the Worker email → accept invitation → land on Dashboard.
+- [ ] Log a treatment on a pig in your assigned area.
+- [ ] Try to add a new pig — allowed (workers can create pigs).
+- [ ] Try to manage the team — option not visible.
+- [ ] Quick-toggle equipment status — works.
+- [ ] Try to log maintenance — works (with photo).
+- [ ] Try to manage shifts — option not visible.
+- [ ] See "My Tasks" tab with tasks assigned to you.
+
+## Vet flow
+- [ ] Sign up with Vet email → accept invitation.
+- [ ] View pig list, pig details — all visible.
+- [ ] Log a vaccination — works.
+- [ ] Try to add a pig — option not visible.
+- [ ] Try to log mortality — option not visible.
+- [ ] Try to manage equipment/shifts/team — options not visible.
+
+## Multi-farm
+- [ ] As Owner of Farm A, invite User X as Manager.
+- [ ] Sign up User X separately and create their own Farm B.
+- [ ] User X accepts invite to Farm A → now belongs to 2 farms.
+- [ ] AppBar farm switcher lets User X switch; data sets are independent.
+
+## Offline
+- [ ] Toggle airplane mode mid-session → see orange "Offline" banner.
+- [ ] Add a pig with photo while offline → save completes (Firestore offline cache).
+- [ ] Re-enable network → banner disappears; photo upload flushes; URL appears on pig.
+```
+
+- [ ] **Step 18.4: Final commit**
+
+```bash
+git add -A
+git commit -m "feat(security,docs): Firestore + Storage rules, manual smoke checklist
+
+- Firestore rules enforce membership-based farm isolation and role-based
+  write permissions matching the spec §8 matrix
+- Storage rules require farm membership for photo read/write; 5MB cap
+- Worker quick-toggle equipment status restricted to status+updatedAt fields
+- Worker/Vet edit own records only within 24h; Owner/Manager always
+- Auto-generated tasks bypass owner/manager creation gate
+- Manual smoke checklist enumerates per-role end-to-end flows"
+```
+
+---
+
+## Final verification
+
+After all 18 tasks are complete, run the full verification pass:
+
+- [ ] **`flutter analyze`** — zero issues.
+- [ ] **`flutter test`** — all tests pass.
+- [ ] **`firebase emulators:start --only firestore`** + run rule unit tests (left as ops detail).
+- [ ] **Manual smoke checklist** in `docs/superpowers/manual-smoke-checklist.md` — every checkbox passes on a real Android device.
+- [ ] **Success criteria** (spec §14) — every numbered criterion is demonstrably true.
+- [ ] Tag the branch: `git tag sub-project-A` and push the tag.
+
+---
+
+## Notes for the executing engineer
+
+- **Riverpod 3 syntax:** providers in this plan use `Provider`/`StreamProvider.family<T, RecordArg>` — match the SDK version in `pubspec.yaml`.
+- **`fake_cloud_firestore` quirks:** collection-group queries work but ordering and `FieldPath.documentId` filters may behave slightly differently from prod. Test ordering against a real emulator when in doubt.
+- **Photo capture on real device:** the Android `image_picker` needs `android.permission.CAMERA` in `AndroidManifest.xml` — verify before user-testing.
+- **iOS:** add `NSCameraUsageDescription` and `NSPhotoLibraryUsageDescription` in `ios/Runner/Info.plist`.
+- **Free emoji-and-icon liberties:** the EveryPig-inspired tone calls for visual restraint — minimal emoji, calm greens, big tap targets, content over chrome.
+- **What's NOT in this plan and is fine:** the deferred sub-projects (B-F) from spec §13. Don't scope-creep into them.

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/widgets/splash_screen.dart';
+import '../features/activity/presentation/activity_screen.dart';
 import '../features/areas/presentation/areas_list_screen.dart';
 import '../features/authentication/application/auth_providers.dart';
 import '../features/authentication/presentation/login_screen.dart';
@@ -65,6 +66,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/pigs', builder: (c, s) => const PigsListScreen()),
       GoRoute(path: '/tasks', builder: (c, s) => const TasksScreen()),
       GoRoute(path: '/shifts', builder: (c, s) => const ShiftsScreen()),
+      GoRoute(path: '/activity', builder: (c, s) => const ActivityScreen()),
       GoRoute(
         path: '/',
         builder: (c, s) => const Scaffold(

@@ -1,65 +1,25 @@
-// lib/src/features/authentication/application/auth_providers.dart
-
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../activity/application/activity_providers.dart';
 import '../data/auth_repository.dart';
 import '../domain/user_model.dart';
 
-// Provides the instance of FirebaseAuth
-final firebaseAuthProvider = Provider<FirebaseAuth>(
-  (ref) => FirebaseAuth.instance,
+final firebaseAuthProvider = Provider<FirebaseAuth>((_) => FirebaseAuth.instance);
+
+final authRepositoryProvider = Provider<AuthRepository>(
+  (ref) => AuthRepository(ref.watch(firebaseAuthProvider), ref.watch(firestoreProvider)),
 );
 
-// Provides the instance of FirebaseFirestore
-final firestoreProvider = Provider<FirebaseFirestore>(
-  (ref) => FirebaseFirestore.instance,
+final authStateChangesProvider = StreamProvider<User?>(
+  (ref) => ref.watch(authRepositoryProvider).authStateChanges,
 );
 
-// Provides the instance of our AuthRepository
-final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(
-    ref.read(firebaseAuthProvider),
-    ref.read(firestoreProvider),
-  );
-});
-
-// StreamProvider that listens to the authentication state
-// This is the most important provider for managing user login state.
-// It automatically updates whenever a user signs in or out.
-final authStateChangesProvider = StreamProvider<User?>((ref) {
-  return ref.watch(authRepositoryProvider).authStateChanges;
-});
-
-/// Watches the Firestore document for the current user.
-/// Returns an [AppUser] object.
-final userDataProvider = StreamProvider<AppUser?>((ref) {
-  final authState = ref.watch(authStateChangesProvider);
-  final firestore = ref.watch(firestoreProvider);
-
-  // If there's no logged-in user, return a stream of null
-  if (authState.asData?.value?.uid == null) {
-    return Stream.value(null);
-  }
-
-  // If there is a user, listen to their document in the 'users' collection
-  final userDocStream = firestore
+final currentAppUserProvider = StreamProvider<AppUser?>((ref) {
+  final user = ref.watch(authStateChangesProvider).asData?.value;
+  if (user == null) return Stream.value(null);
+  return ref.watch(firestoreProvider)
       .collection('users')
-      .doc(authState.asData!.value!.uid)
-      .snapshots();
-
-  // Map the document snapshot to an AppUser object
-  return userDocStream.map((snapshot) {
-    if (snapshot.exists) {
-      return AppUser.fromMap(snapshot.data()!);
-    }
-    return null;
-  });
-});
-
-/// Provides the last-selected farm id of the current user.
-/// Task 3 will replace this with a membership-driven active-farm provider.
-final currentFarmIdProvider = Provider<String?>((ref) {
-  final userData = ref.watch(userDataProvider);
-  return userData.asData?.value?.lastSelectedFarmId;
+      .doc(user.uid)
+      .snapshots()
+      .map((d) => d.exists ? AppUser.fromMap(d.data()!) : null);
 });

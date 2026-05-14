@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 
+import '../../core/widgets/section_header.dart';
+import '../../core/widgets/stat_tile.dart';
 import '../farms/application/farm_providers.dart';
 import '../pigs/application/pig_providers.dart';
 import '../pigs/domain/farrowing_record.dart';
@@ -41,32 +44,40 @@ class SnapshotCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Swine snapshot',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            const SectionHeader(
+              title: 'Swine snapshot',
+              padding: EdgeInsets.only(bottom: 8),
             ),
-            const Divider(),
-            _row('Total pigs (active)', active.length.toString()),
-            _row('Sows', sows.toString()),
-            _row('Boars', boars.toString()),
-            _row('Farrowings (last 30d)', recentFarr.toString()),
-            _row('Mortalities (last 30d)', recentMort.toString()),
+            const Divider(height: 1),
+            const SizedBox(height: 4),
+            StatTile(
+              label: 'Total pigs (active)',
+              value: active.length.toString(),
+              icon: Iconsax.pet,
+            ),
+            StatTile(
+              label: 'Sows',
+              value: sows.toString(),
+              icon: Iconsax.heart,
+            ),
+            StatTile(
+              label: 'Boars',
+              value: boars.toString(),
+              icon: Iconsax.heart,
+            ),
+            StatTile(
+              label: 'Farrowings (last 30d)',
+              value: recentFarr.toString(),
+              icon: Icons.child_friendly,
+            ),
+            StatTile(
+              label: 'Mortalities (last 30d)',
+              value: recentMort.toString(),
+              icon: Icons.heart_broken,
+            ),
           ],
         ),
       ),
     );
   }
-
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(child: Text(label)),
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-          ],
-        ),
-      );
 }

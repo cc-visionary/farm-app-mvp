@@ -10,6 +10,7 @@ import '../features/authentication/presentation/login_screen.dart';
 import '../features/authentication/presentation/signup_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/equipment/presentation/equipment_list_screen.dart';
+import '../features/expenses/presentation/expenses_list_screen.dart';
 import '../features/farms/application/farm_providers.dart';
 import '../features/farms/presentation/create_farm_screen.dart';
 import '../features/farms/presentation/farm_setup_screen.dart';
@@ -71,6 +72,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/inventory', builder: (c, s) => const InventoryListScreen()),
       GoRoute(path: '/pigs', builder: (c, s) => const PigsListScreen()),
       GoRoute(path: '/purchases', builder: (c, s) => const PurchasesListScreen()),
+      GoRoute(path: '/expenses', builder: (c, s) => const ExpensesListScreen()),
       GoRoute(path: '/tasks', builder: (c, s) => const TasksScreen()),
       GoRoute(path: '/shifts', builder: (c, s) => const ShiftsScreen()),
       GoRoute(path: '/activity', builder: (c, s) => const ActivityScreen()),

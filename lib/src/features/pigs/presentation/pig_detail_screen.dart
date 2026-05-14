@@ -1,7 +1,13 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/stat_tile.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/pig_providers.dart';
@@ -23,13 +29,28 @@ class PigDetailScreen extends ConsumerWidget {
     if (farmId == null) return const SizedBox.shrink();
     final pigAsync =
         ref.watch(pigByIdProvider((farmId: farmId, pigId: pigId)));
+    final theme = Theme.of(context);
 
     return DefaultTabController(
       length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: pigAsync.maybeWhen(
-            data: (p) => Text(p?.tagId ?? 'Pig'),
+            data: (p) => p == null
+                ? const Text('Pig')
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(p.tagId, style: theme.textTheme.titleMedium),
+                      Text(
+                        p.stage.label,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
             orElse: () => const Text('Pig'),
           ),
           bottom: const TabBar(
@@ -43,7 +64,13 @@ class PigDetailScreen extends ConsumerWidget {
         ),
         body: pigAsync.when(
           data: (pig) {
-            if (pig == null) return const Center(child: Text('Not found'));
+            if (pig == null) {
+              return const EmptyState(
+                icon: Iconsax.info_circle,
+                title: 'Pig not found',
+                subtitle: 'It may have been removed.',
+              );
+            }
             return TabBarView(
               children: [
                 _ProfileTab(pig: pig),
@@ -53,7 +80,13 @@ class PigDetailScreen extends ConsumerWidget {
               ],
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const Center(
+            child: SizedBox(
+              height: 24,
+              width: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ),
           error: (e, _) => Center(child: Text('Error: $e')),
         ),
       ),
@@ -67,77 +100,132 @@ class _ProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final now = DateTime.now();
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        if (pig.photoUrl != null)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              pig.photoUrl!,
-              height: 200,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => Container(
-                height: 200,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image, size: 48),
-              ),
-            ),
-          ),
-        const SizedBox(height: 16),
-        _row('Tag ID', pig.tagId),
-        _row('Sex', pig.sex.label),
-        _row('Breed', pig.breed.isEmpty ? '—' : pig.breed),
-        _row('Stage', pig.stage.label),
-        _row('Status', pig.status.label),
-        _row('Born', DateFormat.yMMMd().format(pig.birthDate.toDate())),
-        _row('Age', pig.ageString(now)),
+        _PhotoHeader(photoUrl: pig.photoUrl),
+        const SectionHeader(title: 'Identity'),
+        StatTile(label: 'Tag ID', value: pig.tagId),
+        StatTile(label: 'Sex', value: pig.sex.label),
+        StatTile(label: 'Breed', value: pig.breed.isEmpty ? '—' : pig.breed),
+        StatTile(label: 'Stage', value: pig.stage.label),
+        StatTile(label: 'Status', value: pig.status.label),
+        const SectionHeader(title: 'Lifecycle'),
+        StatTile(
+          label: 'Born',
+          value: DateFormat.yMMMd().format(pig.birthDate.toDate()),
+        ),
+        StatTile(label: 'Age', value: pig.ageString(now)),
         if (pig.currentWeight != null)
-          _row(
-            'Current weight',
-            '${pig.currentWeight!.toStringAsFixed(1)} kg',
+          StatTile(
+            label: 'Current weight',
+            value: '${pig.currentWeight!.toStringAsFixed(1)} kg',
           ),
-        _row('Area', pig.currentAreaId),
-        if (pig.currentPenId != null) _row('Pen', pig.currentPenId!),
-        if (pig.notes != null && pig.notes!.trim().isNotEmpty)
-          _row('Notes', pig.notes!),
+        const SectionHeader(title: 'Location'),
+        StatTile(
+          label: 'Area',
+          value: pig.currentAreaId.isEmpty ? '—' : pig.currentAreaId,
+        ),
+        StatTile(
+          label: 'Pen',
+          value: (pig.currentPenId == null || pig.currentPenId!.isEmpty)
+              ? '—'
+              : pig.currentPenId!,
+        ),
+        if (pig.notes != null && pig.notes!.trim().isNotEmpty) ...[
+          const SectionHeader(title: 'Notes'),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(pig.notes!, style: theme.textTheme.bodyLarge),
+          ),
+        ],
         if (pig.status == PigStatus.active) ...[
           const SizedBox(height: 24),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.heart_broken, color: Colors.red),
-            label: const Text(
-              'Mark deceased',
-              style: TextStyle(color: Colors.red),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.red),
-            ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => MortalityLogScreen(pig: pig),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              icon: Icon(Icons.heart_broken, color: theme.colorScheme.error),
+              label: Text(
+                'Mark deceased',
+                style: TextStyle(color: theme.colorScheme.error),
               ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: theme.colorScheme.error),
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: () async {
+                final ok = await ConfirmDialog.show(
+                  context: context,
+                  title: 'Mark deceased?',
+                  message:
+                      'This cannot be undone. The pig will be moved out of active herd.',
+                  confirmLabel: 'Mark deceased',
+                  destructive: true,
+                );
+                if (!ok || !context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MortalityLogScreen(pig: pig),
+                  ),
+                );
+              },
             ),
           ),
         ],
       ],
     );
   }
+}
 
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 110,
-              child: Text(label, style: const TextStyle(color: Colors.grey)),
-            ),
-            Expanded(child: Text(value)),
-          ],
+class _PhotoHeader extends StatelessWidget {
+  const _PhotoHeader({this.photoUrl});
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (photoUrl == null || photoUrl!.isEmpty) {
+      return Container(
+        height: 220,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          Iconsax.pet,
+          size: 48,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: CachedNetworkImage(
+        imageUrl: photoUrl!,
+        height: 220,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => Container(
+          height: 220,
+          color: theme.colorScheme.surfaceContainerHigh,
+        ),
+        errorWidget: (_, _, _) => Container(
+          height: 220,
+          color: theme.colorScheme.surfaceContainerHigh,
+          alignment: Alignment.center,
+          child: Icon(
+            Iconsax.gallery,
+            size: 48,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _LineageTab extends ConsumerWidget {
@@ -147,50 +235,156 @@ class _LineageTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        const Text(
-          'Parents',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        const SectionHeader(title: 'Parents'),
+        _ParentCard(
+          role: 'Sire',
+          symbol: '♂',
+          parentId: pig.sireId,
         ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            title: const Text('Sire (father)'),
-            subtitle: Text(pig.sireId ?? '—'),
-            trailing: pig.sireId != null
-                ? const Icon(Icons.chevron_right)
-                : null,
-            onTap: pig.sireId != null
-                ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PigDetailScreen(pigId: pig.sireId!),
-                      ),
-                    )
-                : null,
-          ),
+        _ParentCard(
+          role: 'Dam',
+          symbol: '♀',
+          parentId: pig.damId,
         ),
-        Card(
-          child: ListTile(
-            title: const Text('Dam (mother)'),
-            subtitle: Text(pig.damId ?? '—'),
-            trailing: pig.damId != null
-                ? const Icon(Icons.chevron_right)
-                : null,
-            onTap: pig.damId != null
-                ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PigDetailScreen(pigId: pig.damId!),
-                      ),
-                    )
-                : null,
-          ),
-        ),
-        // Offspring discovery is a derived query — wired in Task 8 after
-        // breeding records exist.
       ],
+    );
+  }
+}
+
+class _ParentCard extends ConsumerWidget {
+  const _ParentCard({
+    required this.role,
+    required this.symbol,
+    required this.parentId,
+  });
+  final String role;
+  final String symbol;
+  final String? parentId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final farmId = ref.watch(selectedFarmIdProvider);
+    final isFemale = symbol == '♀';
+    final avatarBg = isFemale
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surfaceContainerHigh;
+    final avatarFg = isFemale
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+
+    if (parentId == null || parentId!.isEmpty) {
+      return Card(
+        child: ListTile(
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: avatarBg,
+            foregroundColor: avatarFg,
+            child: Text(
+              symbol,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          title: Text(role, style: theme.textTheme.titleMedium),
+          subtitle: Text(
+            'Unknown',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    final pigAsync = farmId == null
+        ? const AsyncValue<Pig?>.data(null)
+        : ref.watch(pigByIdProvider((farmId: farmId, pigId: parentId!)));
+
+    return Card(
+      child: pigAsync.when(
+        data: (parent) {
+          if (parent == null) {
+            return ListTile(
+              leading: CircleAvatar(
+                radius: 18,
+                backgroundColor: avatarBg,
+                foregroundColor: avatarFg,
+                child: Text(
+                  symbol,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              title: Text(role, style: theme.textTheme.titleMedium),
+              subtitle: Text(
+                'Not in this farm',
+                style: theme.textTheme.bodyMedium,
+              ),
+            );
+          }
+          return ListTile(
+            leading: CircleAvatar(
+              radius: 18,
+              backgroundColor: avatarBg,
+              foregroundColor: avatarFg,
+              child: Text(
+                symbol,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            title: Text(role, style: theme.textTheme.titleMedium),
+            subtitle: Text(
+              parent.tagId,
+              style: theme.textTheme.bodyMedium,
+            ),
+            trailing: const Icon(Iconsax.arrow_right_3, size: 20),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PigDetailScreen(pigId: parent.id),
+              ),
+            ),
+          );
+        },
+        loading: () => ListTile(
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: avatarBg,
+            foregroundColor: avatarFg,
+            child: Text(
+              symbol,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          title: Text(role, style: theme.textTheme.titleMedium),
+          subtitle: const SizedBox(
+            height: 16,
+            width: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        error: (_, _) => ListTile(
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: avatarBg,
+            foregroundColor: avatarFg,
+            child: Text(symbol),
+          ),
+          title: Text(role, style: theme.textTheme.titleMedium),
+          subtitle: Text(parentId!, style: theme.textTheme.bodyMedium),
+        ),
+      ),
     );
   }
 }
@@ -205,8 +399,9 @@ class _HealthTab extends ConsumerWidget {
       healthForPigProvider((farmId: pig.farmId, pigId: pig.id)),
     );
     return Scaffold(
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.medical_services),
+        icon: const Icon(Iconsax.health),
         label: const Text('Log health'),
         onPressed: () => Navigator.push(
           context,
@@ -216,14 +411,24 @@ class _HealthTab extends ConsumerWidget {
       body: recordsAsync.when(
         data: (records) {
           if (records.isEmpty) {
-            return const Center(child: Text('No health records yet.'));
+            return const EmptyState(
+              icon: Iconsax.health,
+              title: 'No health records yet',
+              subtitle: 'Tap "Log health" to record a treatment or check.',
+            );
           }
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             children: records.map((r) => _HealthCard(record: r)).toList(),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+          child: SizedBox(
+            height: 24,
+            width: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
         error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
@@ -234,78 +439,104 @@ class _HealthCard extends StatelessWidget {
   const _HealthCard({required this.record});
   final HealthRecord record;
 
-  Color _typeColor() {
+  IconData _typeIcon() {
     switch (record.type) {
       case HealthEventType.vaccination:
-        return Colors.blue;
+        return Iconsax.shield_tick;
       case HealthEventType.treatment:
-        return Colors.orange;
+        return Iconsax.hospital;
       case HealthEventType.checkup:
-        return Colors.teal;
+        return Iconsax.search_status;
       case HealthEventType.deworming:
-        return Colors.purple;
+        return Iconsax.shield_security;
+    }
+  }
+
+  Color _typeColor(ColorScheme scheme) {
+    switch (record.type) {
+      case HealthEventType.vaccination:
+        return scheme.primary;
+      case HealthEventType.treatment:
+        return scheme.tertiary;
+      case HealthEventType.checkup:
+        return scheme.onSurfaceVariant;
+      case HealthEventType.deworming:
+        return scheme.primary;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final color = _typeColor();
+    final theme = Theme.of(context);
+    final color = _typeColor(theme.colorScheme);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                Icon(_typeIcon(), size: 20, color: color),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 2,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     record.type.label,
-                    style: TextStyle(
-                      fontSize: 12,
+                    style: theme.textTheme.labelMedium?.copyWith(
                       color: color,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
                 const Spacer(),
                 Text(
                   DateFormat.yMMMd().format(record.date.toDate()),
-                  style: const TextStyle(color: Colors.grey),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             if (record.productName != null)
-              Text('Product: ${record.productName}'),
-            if (record.dosage != null) Text('Dosage: ${record.dosage}'),
-            if (record.route != null) Text('Route: ${record.route!.label}'),
+              _kv(theme, 'Product', record.productName!),
+            if (record.dosage != null) _kv(theme, 'Dosage', record.dosage!),
+            if (record.route != null) _kv(theme, 'Route', record.route!.label),
             if (record.diagnosis != null)
-              Text('Diagnosis: ${record.diagnosis}'),
+              _kv(theme, 'Diagnosis', record.diagnosis!),
             if (record.costPhp != null)
-              Text('Cost: ₱${record.costPhp!.toStringAsFixed(2)}'),
+              _kv(theme, 'Cost', '₱${record.costPhp!.toStringAsFixed(2)}'),
             if (record.withdrawalEndDate != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Withdrawal until: '
-                '${DateFormat.yMMMd().format(record.withdrawalEndDate!.toDate())}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red,
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Withdrawal until '
+                  '${DateFormat.yMMMd().format(record.withdrawalEndDate!.toDate())}',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
             if (record.photoUrls.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SizedBox(
                 height: 80,
                 child: ListView(
@@ -315,17 +546,27 @@ class _HealthCard extends StatelessWidget {
                         (url) => Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              url,
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: url,
                               width: 80,
                               height: 80,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
+                              placeholder: (_, _) => Container(
                                 width: 80,
                                 height: 80,
-                                color: Colors.grey.shade200,
-                                child: const Icon(Icons.broken_image),
+                                color: theme.colorScheme.surfaceContainerHigh,
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                width: 80,
+                                height: 80,
+                                color: theme.colorScheme.surfaceContainerHigh,
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  Iconsax.gallery,
+                                  size: 20,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),
@@ -336,14 +577,30 @@ class _HealthCard extends StatelessWidget {
               ),
             ],
             if (record.notes != null && record.notes!.trim().isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(record.notes!),
+              const SizedBox(height: 12),
+              Text(record.notes!, style: theme.textTheme.bodyLarge),
             ],
           ],
         ),
       ),
     );
   }
+
+  Widget _kv(ThemeData theme, String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 100,
+              child: Text(label, style: theme.textTheme.bodyMedium),
+            ),
+            Expanded(
+              child: Text(value, style: theme.textTheme.bodyLarge),
+            ),
+          ],
+        ),
+      );
 }
 
 class _BreedingTab extends ConsumerWidget {
@@ -355,16 +612,19 @@ class _BreedingTab extends ConsumerWidget {
     final canBreed = pig.sex == PigSex.female &&
         (pig.stage == PigStage.sow || pig.stage == PigStage.gilt);
     if (!canBreed) {
-      return const Center(
-        child: Text('Breeding only applies to sows and gilts.'),
+      return const EmptyState(
+        icon: Iconsax.heart,
+        title: 'Breeding does not apply',
+        subtitle: 'Only sows and gilts can be bred.',
       );
     }
     final recordsAsync = ref.watch(
       breedingStreamProvider((farmId: pig.farmId, sowId: pig.id)),
     );
     return Scaffold(
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.favorite),
+        icon: const Icon(Iconsax.heart),
         label: const Text('Log breeding'),
         onPressed: () => Navigator.push(
           context,
@@ -376,55 +636,33 @@ class _BreedingTab extends ConsumerWidget {
       body: recordsAsync.when(
         data: (records) {
           if (records.isEmpty) {
-            return const Center(child: Text('No breeding records yet.'));
+            return const EmptyState(
+              icon: Iconsax.heart,
+              title: 'No breeding records yet',
+              subtitle: 'Tap "Log breeding" to record an insemination.',
+            );
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             children: records
                 .map(
-                  (r) => Card(
-                    child: ListTile(
-                      title: Row(
-                        children: [
-                          Expanded(child: Text(r.method.label)),
-                          _StatusPill(status: r.status),
-                        ],
-                      ),
-                      subtitle: Text(
-                        'Inseminated: ${DateFormat.yMMMd().format(r.inseminationDate.toDate())}\n'
-                        'Expected farrow: ${DateFormat.yMMMd().format(r.expectedFarrowingDate.toDate())}\n'
-                        'Boar: ${r.boarId}',
-                      ),
-                      isThreeLine: true,
-                      trailing: r.status == BreedingStatus.planned
-                          ? IconButton(
-                              icon: const Icon(Icons.fact_check),
-                              tooltip: 'Pregnancy check',
-                              onPressed: () =>
-                                  _showPregnancyCheck(context, ref, r),
-                            )
-                          : r.status == BreedingStatus.confirmed
-                              ? IconButton(
-                                  icon: const Icon(Icons.child_friendly),
-                                  tooltip: 'Log farrowing',
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => FarrowingLogScreen(
-                                        sow: pig,
-                                        breedingRecord: r,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : null,
-                    ),
+                  (r) => _BreedingCard(
+                    record: r,
+                    pig: pig,
+                    onPregnancyCheck: () =>
+                        _showPregnancyCheck(context, ref, r),
                   ),
                 )
                 .toList(),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+          child: SizedBox(
+            height: 24,
+            width: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
         error: (e, _) => Center(child: Text('$e')),
       ),
     );
@@ -479,41 +717,130 @@ class _BreedingTab extends ConsumerWidget {
   }
 }
 
+class _BreedingCard extends StatelessWidget {
+  const _BreedingCard({
+    required this.record,
+    required this.pig,
+    required this.onPregnancyCheck,
+  });
+
+  final BreedingRecord record;
+  final Pig pig;
+  final VoidCallback onPregnancyCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = record;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    r.method.label,
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                _StatusPill(status: r.status),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _row(theme, 'Inseminated',
+                DateFormat.yMMMd().format(r.inseminationDate.toDate())),
+            _row(theme, 'Expected farrow',
+                DateFormat.yMMMd().format(r.expectedFarrowingDate.toDate())),
+            _row(theme, 'Boar', r.boarId),
+            if (r.status == BreedingStatus.planned) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Iconsax.calendar_tick, size: 20),
+                  label: const Text('Pregnancy check'),
+                  onPressed: onPregnancyCheck,
+                ),
+              ),
+            ] else if (r.status == BreedingStatus.confirmed) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.child_friendly, size: 20),
+                  label: const Text('Log farrowing'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FarrowingLogScreen(
+                        sow: pig,
+                        breedingRecord: r,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(ThemeData theme, String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text(label, style: theme.textTheme.bodyMedium),
+            ),
+            Expanded(
+              child: Text(value, style: theme.textTheme.bodyLarge),
+            ),
+          ],
+        ),
+      );
+}
+
 class _StatusPill extends StatelessWidget {
   const _StatusPill({required this.status});
   final BreedingStatus status;
 
-  Color _color() {
+  Color _color(ColorScheme scheme) {
     switch (status) {
       case BreedingStatus.planned:
-        return Colors.blue;
+        return scheme.tertiary;
       case BreedingStatus.confirmed:
-        return Colors.green;
+        return scheme.primary;
       case BreedingStatus.farrowed:
-        return Colors.teal;
+        return scheme.primary;
       case BreedingStatus.failed:
-        return Colors.red;
+        return scheme.error;
       case BreedingStatus.aborted:
-        return Colors.orange;
+        return scheme.error;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _color();
+    final theme = Theme.of(context);
+    final color = _color(theme.colorScheme);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.15),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.withValues(alpha: 0.4)),
       ),
       child: Text(
         status.label,
-        style: TextStyle(
-          fontSize: 12,
-          color: c,
-          fontWeight: FontWeight.w600,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

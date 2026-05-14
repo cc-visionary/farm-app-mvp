@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/widgets/app_shell.dart';
 import '../core/widgets/splash_screen.dart';
 import '../features/activity/presentation/activity_screen.dart';
 import '../features/areas/presentation/areas_list_screen.dart';
 import '../features/authentication/application/auth_providers.dart';
 import '../features/authentication/presentation/login_screen.dart';
 import '../features/authentication/presentation/signup_screen.dart';
+import '../features/dashboard/dashboard_screen.dart';
 import '../features/equipment/presentation/equipment_list_screen.dart';
 import '../features/farms/application/farm_providers.dart';
 import '../features/farms/presentation/create_farm_screen.dart';
@@ -73,9 +74,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/layout', builder: (c, s) => const FarmLayoutScreen()),
       GoRoute(
         path: '/',
-        builder: (c, s) => const Scaffold(
-          body: Center(child: Text('Home — Pigs/Dashboard built in later tasks')),
-        ),
+        builder: (c, s) => const AppShell(child: DashboardScreen()),
       ),
     ],
   );

@@ -53,6 +53,7 @@ class Pig {
   final PigStatus status;
   final String currentAreaId;
   final String? currentPenId;
+  final String? currentBatchId;
   final double? currentWeight;
   final Timestamp? weightUpdatedAt;
   final String? photoUrl;
@@ -74,6 +75,7 @@ class Pig {
     required this.status,
     required this.currentAreaId,
     required this.currentPenId,
+    required this.currentBatchId,
     required this.currentWeight,
     required this.weightUpdatedAt,
     required this.photoUrl,
@@ -98,6 +100,7 @@ class Pig {
       status: PigStatus.fromString(d['status'] as String? ?? 'active'),
       currentAreaId: d['currentAreaId'] as String? ?? '',
       currentPenId: d['currentPenId'] as String?,
+      currentBatchId: d['currentBatchId'] as String?,
       currentWeight: (d['currentWeight'] as num?)?.toDouble(),
       weightUpdatedAt: d['weightUpdatedAt'] as Timestamp?,
       photoUrl: d['photoUrl'] as String?,
@@ -119,6 +122,7 @@ class Pig {
         'status': status.value,
         'currentAreaId': currentAreaId,
         if (currentPenId != null) 'currentPenId': currentPenId,
+        if (currentBatchId != null) 'currentBatchId': currentBatchId,
         if (currentWeight != null) 'currentWeight': currentWeight,
         if (weightUpdatedAt != null) 'weightUpdatedAt': weightUpdatedAt,
         if (photoUrl != null) 'photoUrl': photoUrl,

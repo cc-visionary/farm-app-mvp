@@ -109,6 +109,7 @@ Pig _pig({
       status: PigStatus.active,
       currentAreaId: 'a',
       currentPenId: null,
+      currentBatchId: null,
       currentWeight: null,
       weightUpdatedAt: null,
       photoUrl: null,

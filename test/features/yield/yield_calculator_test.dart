@@ -136,6 +136,7 @@ Pig _pig({
       status: status,
       currentAreaId: 'a',
       currentPenId: null,
+      currentBatchId: null,
       currentWeight: currentWeight,
       weightUpdatedAt:
           weightUpdatedAt == null ? null : Timestamp.fromDate(weightUpdatedAt),

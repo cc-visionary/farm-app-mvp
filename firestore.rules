@@ -1,0 +1,206 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ============================================================
+    // Helper functions
+    // ============================================================
+    function isSignedIn() { return request.auth != null; }
+
+    function memberDoc(farmId) {
+      return get(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    function isMember(farmId) {
+      return isSignedIn()
+          && exists(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid))
+          && memberDoc(farmId).data.get('removedAt', null) == null;
+    }
+
+    function role(farmId) {
+      return memberDoc(farmId).data.role;
+    }
+
+    function isOwner(farmId)   { return isMember(farmId) && role(farmId) == 'owner'; }
+    function isManager(farmId) { return isMember(farmId) && role(farmId) == 'manager'; }
+    function isWorker(farmId)  { return isMember(farmId) && role(farmId) == 'worker'; }
+    function isVet(farmId)     { return isMember(farmId) && role(farmId) == 'vet'; }
+
+    function canWriteEquipment(farmId) { return isOwner(farmId) || isManager(farmId); }
+    function canWriteShifts(farmId)    { return isOwner(farmId) || isManager(farmId); }
+    function canManageTeam(farmId)     { return isOwner(farmId) || isManager(farmId); }
+    function canEditPig(farmId)        { return isOwner(farmId) || isManager(farmId) || isWorker(farmId); }
+
+    // ============================================================
+    // users/{uid} — self only
+    // ============================================================
+    match /users/{uid} {
+      allow read:   if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // farms/{farmId}
+    // ============================================================
+    match /farms/{farmId} {
+      allow read:   if isMember(farmId);
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isOwner(farmId);
+      allow delete: if false;
+
+      // ----------------------------------------------------------
+      // members/{userId}
+      // ----------------------------------------------------------
+      match /members/{userId} {
+        // Self-create allowed only when accepting an invitation (the client
+        // adds the matching members doc in the same batch as updating the
+        // invitation; we permit it if a corresponding invite exists for
+        // the inviteId carried on the members doc).
+        allow read: if isMember(farmId) || request.auth.uid == userId;
+        allow create: if canManageTeam(farmId)
+          || (isSignedIn()
+              && request.auth.uid == userId
+              && exists(/databases/$(database)/documents/farms/$(farmId)/invitations/$(request.resource.data.get('_inviteId', '__none__'))));
+        allow update: if canManageTeam(farmId);
+        allow delete: if isOwner(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // invitations/{id}
+      // ----------------------------------------------------------
+      match /invitations/{id} {
+        allow read: if isMember(farmId)
+          || (isSignedIn()
+              && request.auth.token.email == resource.data.email
+              && resource.data.status == 'pending');
+        allow create: if canManageTeam(farmId);
+        allow update: if canManageTeam(farmId)
+          || (isSignedIn()
+              && request.auth.token.email == resource.data.email
+              && request.resource.data.status == 'accepted');
+        allow delete: if canManageTeam(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // areas/{areaId} + pens/{penId}
+      // ----------------------------------------------------------
+      match /areas/{areaId} {
+        allow read:  if isMember(farmId);
+        allow write: if isOwner(farmId) || isManager(farmId);
+
+        match /pens/{penId} {
+          allow read:  if isMember(farmId);
+          allow write: if isOwner(farmId) || isManager(farmId);
+        }
+      }
+
+      // ----------------------------------------------------------
+      // equipment/{equipmentId} + maintenance_records/{recordId}
+      // ----------------------------------------------------------
+      match /equipment/{equipmentId} {
+        allow read: if isMember(farmId);
+        // Owners/managers can write any field; workers may toggle only
+        // status + updatedAt for quick-status changes.
+        allow create, update: if canWriteEquipment(farmId)
+          || (isWorker(farmId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['status', 'updatedAt']));
+        allow delete: if canWriteEquipment(farmId);
+
+        match /maintenance_records/{recordId} {
+          allow read:   if isMember(farmId);
+          allow create: if canWriteEquipment(farmId) || isWorker(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId);
+        }
+      }
+
+      // ----------------------------------------------------------
+      // pigs/{pigId} + sub-collections
+      // ----------------------------------------------------------
+      match /pigs/{pigId} {
+        allow read: if isMember(farmId);
+        allow create, update: if canEditPig(farmId);
+        allow delete: if isOwner(farmId) || isManager(farmId);
+
+        match /breeding_records/{recordId} {
+          allow read:   if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+
+        match /farrowing_records/{recordId} {
+          allow read:   if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+
+        match /health_records/{recordId} {
+          allow read:   if isMember(farmId);
+          allow create: if isOwner(farmId) || isManager(farmId) || isWorker(farmId) || isVet(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+
+        match /mortality_record/{recordId} {
+          allow read:   if isMember(farmId);
+          allow create: if canEditPig(farmId);
+          allow update, delete: if isOwner(farmId) || isManager(farmId)
+            || (resource.data.createdBy == request.auth.uid
+                && request.time.toMillis() - resource.data.createdAt.toMillis() < 86400000);
+        }
+      }
+
+      // ----------------------------------------------------------
+      // batches/{batchId}
+      // ----------------------------------------------------------
+      match /batches/{batchId} {
+        allow read:  if isMember(farmId);
+        allow write: if canEditPig(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // tasks/{taskId}
+      // ----------------------------------------------------------
+      match /tasks/{taskId} {
+        allow read: if isMember(farmId);
+        // Owners/managers can create freely; canEditPig roles may create
+        // autoGenerated tasks (those emitted by breeding/farrowing/health flows).
+        allow create: if isOwner(farmId) || isManager(farmId)
+          || (canEditPig(farmId) && request.resource.data.autoGenerated == true);
+        // Owners/managers can fully edit; any member can complete a task by
+        // updating only status + completedBy + completedAt.
+        allow update: if isOwner(farmId) || isManager(farmId)
+          || (isMember(farmId)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['status', 'completedBy', 'completedAt']));
+        allow delete: if isOwner(farmId) || isManager(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // shifts/{shiftId}
+      // ----------------------------------------------------------
+      match /shifts/{shiftId} {
+        allow read:  if isMember(farmId);
+        allow write: if canWriteShifts(farmId);
+      }
+
+      // ----------------------------------------------------------
+      // activity/{entryId} — append-only audit log
+      // ----------------------------------------------------------
+      match /activity/{entryId} {
+        allow read:   if isMember(farmId);
+        allow create: if isMember(farmId)
+          && request.resource.data.actorUserId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

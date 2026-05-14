@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // All app uploads live under /farms/{farmId}/...
+    // Access is granted to authenticated members of that farm only.
+    match /farms/{farmId}/{allPaths=**} {
+      function isMember() {
+        return request.auth != null
+            && firestore.exists(
+                 /databases/(default)/documents/farms/$(farmId)/members/$(request.auth.uid)
+               );
+      }
+
+      allow read: if isMember();
+      allow write: if isMember()
+        && request.resource.size < 5 * 1024 * 1024; // 5 MB cap per file.
+    }
+  }
+}

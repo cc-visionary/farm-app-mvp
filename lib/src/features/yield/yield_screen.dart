@@ -1,9 +1,16 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import '../../core/permissions/permission_service.dart';
+import '../../core/permissions/role.dart';
 import '../../core/widgets/section_header.dart';
 import '../../core/widgets/stat_tile.dart';
+import '../authentication/application/auth_providers.dart';
 import '../farms/application/farm_providers.dart';
+import '../profitability/application/profitability_providers.dart';
+import '../profitability/presentation/batches_list_screen.dart';
+import '../team/application/team_providers.dart';
 import 'yield_metrics.dart';
 import 'yield_providers.dart';
 
@@ -22,6 +29,19 @@ class YieldScreen extends ConsumerWidget {
     final g = ref.watch(yieldGrowthProvider(farmId));
     final m = ref.watch(yieldMortalityProvider(farmId));
     final o = ref.watch(yieldOutputProvider(farmId));
+
+    final user = ref.watch(authStateChangesProvider).asData?.value;
+    final role = user != null
+        ? (ref
+                .watch(memberForUserProvider(
+                  (farmId: farmId, userId: user.uid),
+                ))
+                .asData
+                ?.value
+                ?.role ??
+            Role.worker)
+        : Role.worker;
+    final canSeeProfit = PermissionService.canEditEquipment(role);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Yield reports')),
@@ -182,6 +202,20 @@ class YieldScreen extends ConsumerWidget {
               ),
             ),
           ),
+          if (canSeeProfit) const SectionHeader(title: 'Profitability'),
+          if (canSeeProfit) _ProfitabilityCard(farmId: farmId),
+          if (canSeeProfit) const SizedBox(height: 12),
+          if (canSeeProfit)
+            OutlinedButton.icon(
+              icon: const Icon(Iconsax.box),
+              label: const Text('View per-batch profitability'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BatchesListScreen(),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -267,6 +301,99 @@ class _AreaBarChart extends StatelessWidget {
           ),
         ),
         borderData: FlBorderData(show: false),
+      ),
+    );
+  }
+}
+
+class _ProfitabilityCard extends ConsumerWidget {
+  const _ProfitabilityCard({required this.farmId});
+  final String farmId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final r = ref.watch(profitabilityForPeriodProvider(farmId));
+    final profitColor = r.grossProfitPhp >= 0
+        ? theme.colorScheme.primary
+        : theme.colorScheme.error;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Profitability', style: theme.textTheme.headlineSmall),
+            const Divider(),
+            _line(theme, 'Revenue', r.revenuePhp),
+            const SizedBox(height: 4),
+            _line(theme, 'Feed', r.feedCostPhp, expense: true),
+            _line(theme, 'Medicine', r.medicineCostPhp, expense: true),
+            _line(theme, 'Labor', r.laborCostPhp, expense: true),
+            _line(theme, 'Utilities', r.utilitiesCostPhp, expense: true),
+            _line(theme, 'Equipment', r.equipmentCostPhp, expense: true),
+            _line(theme, 'Maintenance', r.maintenanceCostPhp, expense: true),
+            _line(theme, 'Other', r.otherCostPhp, expense: true),
+            const Divider(),
+            Row(
+              children: [
+                Text('Gross profit', style: theme.textTheme.titleMedium),
+                const Spacer(),
+                Text(
+                  '${r.grossProfitPhp >= 0 ? "" : "−"}₱${r.grossProfitPhp.abs().toStringAsFixed(0)}',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: profitColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: profitColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${r.marginPct.toStringAsFixed(1)}% margin',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: profitColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _line(
+    ThemeData theme,
+    String label,
+    double value, {
+    bool expense = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text(label, style: theme.textTheme.bodyMedium),
+          const Spacer(),
+          Text(
+            '${expense ? "−" : ""}₱${value.toStringAsFixed(0)}',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: expense ? theme.colorScheme.onSurfaceVariant : null,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -64,6 +68,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     final List<Member> members = (farmId != null)
         ? ref.watch(membersStreamProvider(farmId)).asData?.value ??
@@ -76,46 +83,57 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('New task')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(title: 'Title'),
             TextField(
               controller: _title,
-              decoration: const InputDecoration(labelText: 'Title'),
+              decoration: const InputDecoration(hintText: 'e.g. Vaccinate sows'),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Description'),
             TextField(
               controller: _desc,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Due date'),
-              subtitle: Text(_due.toLocal().toString().split(' ')[0]),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final p = await showDatePicker(
-                  context: context,
-                  initialDate: _due,
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (p != null) setState(() => _due = p);
-              },
+            const SectionHeader(title: 'Due date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  DateFormat.yMMMd().format(_due),
+                  style: textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final p = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _due,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (p != null) setState(() => _due = p);
+                },
+              ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Assign to',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const SectionHeader(title: 'Assign to'),
             DropdownButtonFormField<String?>(
               initialValue: _assignKind,
-              decoration: const InputDecoration(labelText: 'Type'),
+              decoration: const InputDecoration(),
               items: const [
-                DropdownMenuItem(value: null, child: Text('— unassigned —')),
+                DropdownMenuItem(value: null, child: Text('— Unassigned —')),
                 DropdownMenuItem(value: 'user', child: Text('Specific user')),
                 DropdownMenuItem(
                   value: 'area',
@@ -127,35 +145,50 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 _assignId = null;
               }),
             ),
-            if (_assignKind == 'user')
+            if (_assignKind == 'user') ...[
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _assignId,
-                decoration: const InputDecoration(labelText: 'User'),
+                decoration: const InputDecoration(hintText: 'Select user'),
                 items: members
-                    .map((m) => DropdownMenuItem(
-                          value: m.userId,
-                          child: Text(m.userId),
-                        ))
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m.userId,
+                        child: Text(m.userId),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) => setState(() => _assignId = v),
               ),
-            if (_assignKind == 'area')
+            ],
+            if (_assignKind == 'area') ...[
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _assignId,
-                decoration: const InputDecoration(labelText: 'Area'),
+                decoration: const InputDecoration(hintText: 'Select area'),
                 items: areas
-                    .map((a) => DropdownMenuItem(
-                          value: a.id,
-                          child: Text(a.name),
-                        ))
+                    .map(
+                      (a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Text(a.name),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) => setState(() => _assignId = v),
               ),
+            ],
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const CircularProgressIndicator()
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
                   : const Text('Create task'),
             ),
           ],

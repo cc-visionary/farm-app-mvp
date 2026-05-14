@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -30,26 +32,31 @@ class TasksScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Tasks'),
-          bottom: const TabBar(tabs: [
-            Tab(text: 'My Tasks'),
-            Tab(text: 'All Open'),
-          ]),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'My tasks'),
+              Tab(text: 'All open'),
+            ],
+          ),
         ),
         floatingActionButton: PermissionService.canCreateOrAssignTasks(role)
-            ? FloatingActionButton(
+            ? FloatingActionButton.extended(
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const CreateTaskScreen(),
                   ),
                 ),
-                child: const Icon(Icons.add),
+                icon: const Icon(Iconsax.add),
+                label: const Text('New task'),
               )
             : null,
-        body: TabBarView(children: [
-          _TaskList(farmId: farmId, userId: user.uid, onlyMine: true),
-          _TaskList(farmId: farmId, userId: user.uid, onlyMine: false),
-        ]),
+        body: TabBarView(
+          children: [
+            _TaskList(farmId: farmId, userId: user.uid, onlyMine: true),
+            _TaskList(farmId: farmId, userId: user.uid, onlyMine: false),
+          ],
+        ),
       ),
     );
   }
@@ -73,15 +80,18 @@ class _TaskList extends ConsumerWidget {
     return tasksAsync.when(
       data: (tasks) {
         if (tasks.isEmpty) {
-          return Center(
-            child: Text(
-              onlyMine ? 'No tasks assigned to you.' : 'No open tasks.',
-            ),
+          return EmptyState(
+            icon: Iconsax.task_square,
+            title: onlyMine ? 'No tasks for you' : 'No open tasks',
+            subtitle: onlyMine
+                ? "When something needs your attention, it'll show up here."
+                : 'All caught up. New tasks will appear here.',
           );
         }
-        return ListView(
-          padding: const EdgeInsets.all(12),
-          children: tasks.map((t) => _TaskCard(task: t)).toList(),
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+          itemCount: tasks.length,
+          itemBuilder: (_, i) => _TaskCard(task: tasks[i]),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -96,23 +106,42 @@ class _TaskCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final now = DateTime.now();
     final due = task.dueDate.toDate();
     final overdue = due.isBefore(now);
+    final iconColor = overdue ? colorScheme.error : colorScheme.primary;
+    final iconBg =
+        overdue ? colorScheme.errorContainer : colorScheme.primaryContainer;
+
     return Card(
       child: ListTile(
-        leading: Icon(
-          _icon(task.type),
-          color: overdue ? Colors.red : Theme.of(context).primaryColor,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 4,
         ),
-        title: Text(task.title),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: iconBg,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(_icon(task.type), size: 20, color: iconColor),
+        ),
+        title: Text(task.title, style: textTheme.titleMedium),
         subtitle: Text(
-          'Due ${DateFormat.yMMMd().format(due)}'
-          '${task.assignedTo == null ? "" : " · assigned to ${task.assignedTo!.kind}:${task.assignedTo!.id}"}',
-          style: TextStyle(color: overdue ? Colors.red : Colors.grey),
+          'Due ${DateFormat.MMMd().format(due)}'
+          '${task.assignedTo == null ? "" : " · ${task.assignedTo!.kind}:${task.assignedTo!.id}"}',
+          style: textTheme.bodyMedium?.copyWith(
+            color: overdue ? colorScheme.error : colorScheme.onSurfaceVariant,
+            fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
+          ),
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.check_circle_outline),
+          icon: Icon(Iconsax.tick_circle, color: colorScheme.primary),
           tooltip: 'Mark complete',
           onPressed: () async {
             final user = ref.read(authStateChangesProvider).asData?.value;
@@ -131,17 +160,17 @@ class _TaskCard extends ConsumerWidget {
   IconData _icon(TaskType t) {
     switch (t) {
       case TaskType.pregnancyCheck:
-        return Icons.fact_check;
+        return Iconsax.health;
       case TaskType.farrowingPrep:
-        return Icons.event_available;
+        return Iconsax.calendar_tick;
       case TaskType.farrowingExpected:
         return Icons.child_friendly;
       case TaskType.vaccinationDue:
-        return Icons.medical_services;
+        return Iconsax.health;
       case TaskType.withdrawalEnd:
-        return Icons.timer;
+        return Iconsax.timer_1;
       case TaskType.manual:
-        return Icons.task_alt;
+        return Iconsax.task_square;
     }
   }
 }

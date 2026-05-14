@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/stat_tile.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -16,6 +19,9 @@ class EquipmentDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return const SizedBox.shrink();
@@ -41,7 +47,8 @@ class EquipmentDetailScreen extends ConsumerWidget {
               data: (eq) => eq == null
                   ? const SizedBox.shrink()
                   : IconButton(
-                      icon: const Icon(Icons.edit),
+                      icon: const Icon(Iconsax.edit),
+                      tooltip: 'Edit',
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -56,7 +63,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
       ),
       floatingActionButton: PermissionService.canLogMaintenance(role)
           ? FloatingActionButton.extended(
-              icon: const Icon(Icons.build),
+              icon: const Icon(Iconsax.setting_4),
               label: const Text('Log maintenance'),
               onPressed: () => Navigator.push(
                 context,
@@ -69,77 +76,141 @@ class EquipmentDetailScreen extends ConsumerWidget {
           : null,
       body: eqAsync.when(
         data: (eq) {
-          if (eq == null) return const Center(child: Text('Not found'));
+          if (eq == null) {
+            return Center(
+              child: Text(
+                'Not found',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            );
+          }
           final maintList = maintAsync.asData?.value ?? const [];
           final totalCost = maintList.fold<double>(
             0,
             (sum, m) => sum + (m.costPhp ?? 0),
           );
+          final currencyFmt = NumberFormat.currency(
+            locale: 'en_PH',
+            symbol: 'PHP ',
+            decimalDigits: 0,
+          );
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
             children: [
+              const SectionHeader(title: 'Profile'),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        eq.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Type: ${eq.type.label}'),
-                      Text('Status: ${eq.status.label}'),
+                      Text(eq.name, style: textTheme.headlineSmall),
+                      const SizedBox(height: 16),
+                      StatTile(label: 'Type', value: eq.type.label),
+                      StatTile(label: 'Status', value: eq.status.label),
                       if (eq.purchaseDate != null)
-                        Text(
-                          'Purchased: ${DateFormat.yMMMd().format(eq.purchaseDate!.toDate())}',
+                        StatTile(
+                          label: 'Purchased',
+                          value: DateFormat.yMMMd()
+                              .format(eq.purchaseDate!.toDate()),
                         ),
                       if (eq.purchaseCostPhp != null)
-                        Text(
-                          'Purchase cost: PHP ${eq.purchaseCostPhp!.toStringAsFixed(0)}',
+                        StatTile(
+                          label: 'Purchase cost',
+                          value: currencyFmt.format(eq.purchaseCostPhp),
                         ),
-                      if (eq.notes != null) ...[
-                        const SizedBox(height: 8),
-                        Text(eq.notes!),
+                      if (eq.notes != null && eq.notes!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          eq.notes!,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text(
-                    'Maintenance history',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  Text('Total: PHP ${totalCost.toStringAsFixed(0)}'),
-                ],
+              SectionHeader(
+                title: 'Maintenance history',
+                trailing: maintList.isEmpty
+                    ? null
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Total: ${currencyFmt.format(totalCost)}',
+                          style: textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
               ),
-              const SizedBox(height: 8),
               maintAsync.when(
                 data: (list) {
                   if (list.isEmpty) {
-                    return const Text('No maintenance logged yet.');
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'No maintenance logged yet.',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    );
                   }
                   return Column(
                     children: list
                         .map(
                           (m) => Card(
                             child: ListTile(
-                              leading: Icon(_iconFor(m.type.value)),
-                              title: Text(m.type.label),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              leading: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primaryContainer,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _iconFor(m.type.value),
+                                  size: 20,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                              title: Text(
+                                m.type.label,
+                                style: textTheme.titleMedium,
+                              ),
                               subtitle: Text(
                                 DateFormat.yMMMd().format(m.date.toDate()) +
                                     (m.performedBy != null
-                                        ? ' - ${m.performedBy}'
+                                        ? ' · ${m.performedBy}'
                                         : ''),
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                               trailing: m.costPhp != null
                                   ? Text(
-                                      'PHP ${m.costPhp!.toStringAsFixed(0)}',
+                                      currencyFmt.format(m.costPhp),
+                                      style: textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     )
                                   : null,
                             ),
@@ -148,14 +219,27 @@ class EquipmentDetailScreen extends ConsumerWidget {
                         .toList(),
                   );
                 },
-                loading: () => const CircularProgressIndicator(),
-                error: (e, _) => Text('$e'),
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Text(
+                  '$e',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.error,
+                  ),
+                ),
               ),
             ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(
+          child: Text(
+            'Error: $e',
+            style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
+          ),
+        ),
       ),
     );
   }
@@ -163,13 +247,13 @@ class EquipmentDetailScreen extends ConsumerWidget {
   IconData _iconFor(String t) {
     switch (t) {
       case 'preventive':
-        return Icons.check_circle;
+        return Iconsax.tick_circle;
       case 'repair':
-        return Icons.build;
+        return Iconsax.setting_4;
       case 'inspection':
-        return Icons.visibility;
+        return Iconsax.search_normal;
       default:
-        return Icons.help_outline;
+        return Iconsax.info_circle;
     }
   }
 }

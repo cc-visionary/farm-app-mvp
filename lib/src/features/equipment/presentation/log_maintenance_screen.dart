@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/equipment_providers.dart';
@@ -94,13 +98,17 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Log maintenance')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(title: 'Type'),
             SegmentedButton<MaintenanceType>(
               segments: MaintenanceType.values
                   .map(
@@ -110,55 +118,72 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
               selected: {_type},
               onSelectionChanged: (s) => setState(() => _type = s.first),
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Date'),
-              subtitle: Text(_date.toLocal().toString().split(' ')[0]),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime.now(),
-                );
-                if (picked != null) setState(() => _date = picked);
-              },
+            const SectionHeader(title: 'Date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  DateFormat.yMMMd().format(_date),
+                  style: textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final picked = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setState(() => _date = picked);
+                },
+              ),
             ),
+            const SectionHeader(title: 'Performed by'),
             TextField(
               controller: _performedBy,
-              decoration: const InputDecoration(
-                labelText: 'Performed by (technician name, optional)',
-              ),
+              decoration:
+                  const InputDecoration(hintText: 'Technician name (optional)'),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Parts replaced'),
             TextField(
               controller: _parts,
-              decoration: const InputDecoration(
-                labelText: 'Parts replaced (optional)',
-              ),
+              decoration: const InputDecoration(hintText: 'Optional'),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Cost (PHP)'),
             TextField(
               controller: _cost,
-              decoration: const InputDecoration(
-                labelText: 'Cost (PHP, optional)',
-              ),
+              decoration: const InputDecoration(hintText: 'Optional'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const CircularProgressIndicator()
-                  : const Text('Save'),
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : const Text('Save maintenance'),
             ),
           ],
         ),

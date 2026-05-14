@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -121,44 +125,50 @@ class _AddEditEquipmentScreenState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     final areasAsync = farmId != null
         ? ref.watch(areasStreamProvider(farmId))
         : const AsyncValue<List<Area>>.data([]);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'New equipment' : 'Edit equipment'),
+        title:
+            Text(widget.existing == null ? 'New equipment' : 'Edit equipment'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(title: 'Name'),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: const InputDecoration(hintText: 'e.g. Feeder A'),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Type'),
             DropdownButtonFormField<EquipmentType>(
               initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Type'),
+              decoration: const InputDecoration(),
               items: EquipmentType.values
-                  .map((t) =>
-                      DropdownMenuItem(value: t, child: Text(t.label)))
+                  .map(
+                    (t) =>
+                        DropdownMenuItem(value: t, child: Text(t.label)),
+                  )
                   .toList(),
               onChanged: (v) =>
                   setState(() => _type = v ?? EquipmentType.other),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Area'),
             areasAsync.when(
               data: (areas) => DropdownButtonFormField<String?>(
                 initialValue: _areaId,
-                decoration:
-                    const InputDecoration(labelText: 'Area (optional)'),
+                decoration: const InputDecoration(),
                 items: [
                   const DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('— no area —'),
+                    child: Text('— No area —'),
                   ),
                   ...areas.map(
                     (a) => DropdownMenuItem<String?>(
@@ -170,59 +180,88 @@ class _AddEditEquipmentScreenState
                 onChanged: (v) => setState(() => _areaId = v),
               ),
               loading: () => const SizedBox.shrink(),
-              error: (e, _) => Text('Areas error: $e'),
+              error: (e, _) => Text(
+                'Areas error: $e',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Status'),
             DropdownButtonFormField<EquipmentStatus>(
               initialValue: _status,
-              decoration: const InputDecoration(labelText: 'Status'),
+              decoration: const InputDecoration(),
               items: EquipmentStatus.values
-                  .map((s) =>
-                      DropdownMenuItem(value: s, child: Text(s.label)))
+                  .map(
+                    (s) =>
+                        DropdownMenuItem(value: s, child: Text(s.label)),
+                  )
                   .toList(),
               onChanged: (v) =>
                   setState(() => _status = v ?? EquipmentStatus.available),
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Purchase date (optional)'),
-              subtitle: Text(
-                _purchaseDate?.toLocal().toString().split(' ')[0] ?? '—',
+            const SectionHeader(title: 'Purchase date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  _purchaseDate == null
+                      ? 'Optional'
+                      : DateFormat.yMMMd().format(_purchaseDate!),
+                  style: _purchaseDate == null
+                      ? textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        )
+                      : textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final picked = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _purchaseDate ?? DateTime.now(),
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _purchaseDate = picked);
+                  }
+                },
               ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _purchaseDate ?? DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime.now(),
-                );
-                if (picked != null) {
-                  setState(() => _purchaseDate = picked);
-                }
-              },
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Purchase cost (PHP)'),
             TextField(
               controller: _cost,
-              decoration: const InputDecoration(
-                labelText: 'Purchase cost (PHP, optional)',
-              ),
+              decoration: const InputDecoration(hintText: 'Optional'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notes,
-              decoration:
-                  const InputDecoration(labelText: 'Notes (optional)'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const CircularProgressIndicator()
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
                   : const Text('Save'),
             ),
           ],

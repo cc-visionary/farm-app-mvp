@@ -2,7 +2,11 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../media/media_providers.dart';
@@ -64,27 +68,15 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
     }
 
     // Destructive confirmation BEFORE any uploads/writes.
-    final confirm = await showDialog<bool>(
+    final confirm = await ConfirmDialog.show(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Confirm mortality'),
-        content: Text(
+      title: 'Mark deceased?',
+      message:
           'Mark ${widget.pig.tagId} as deceased? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Mark deceased',
+      destructive: true,
     );
-    if (confirm != true) return;
+    if (!confirm) return;
 
     if (!mounted) return;
     setState(() => _busy = true);
@@ -127,34 +119,47 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     return Scaffold(
       appBar: AppBar(title: Text('Mortality · ${widget.pig.tagId}')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Date'),
-              subtitle: Text(DateFormat.yMMMd().format(_date)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final p = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime(2024),
-                  lastDate: DateTime.now(),
-                );
-                if (p != null) setState(() => _date = p);
-              },
+            const SectionHeader(title: 'Date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  DateFormat.yMMMd().format(_date),
+                  style: textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final p = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _date,
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime.now(),
+                  );
+                  if (p != null) setState(() => _date = p);
+                },
+              ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Cause',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Cause'),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -169,46 +174,43 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                   )
                   .toList(),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Photos (optional)',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Photos'),
             SizedBox(
-              height: 88,
+              height: 96,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
                   for (var i = 0; i < _photos.length; i++)
                     Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.only(right: 4),
                       child: Stack(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: Image.file(
                               _photos[i],
-                              width: 80,
-                              height: 80,
+                              width: 88,
+                              height: 88,
                               fit: BoxFit.cover,
                             ),
                           ),
                           Positioned(
-                            top: 0,
-                            right: 0,
+                            top: 4,
+                            right: 4,
                             child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
                               onTap: () => _removePhoto(i),
                               child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                  color: Colors.black54,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surface
+                                      .withValues(alpha: 0.9),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                  Icons.close,
+                                child: Icon(
+                                  Iconsax.close_circle,
                                   size: 16,
-                                  color: Colors.white,
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                             ),
@@ -216,40 +218,44 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                         ],
                       ),
                     ),
-                  GestureDetector(
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
                     onTap: _addPhoto,
                     child: Container(
-                      width: 80,
-                      height: 80,
+                      width: 88,
+                      height: 88,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(8),
+                        color: colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.add_a_photo),
+                      child: Icon(
+                        Iconsax.gallery_add,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
-                foregroundColor: Colors.white,
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
               ),
               icon: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+                        strokeWidth: 2.5,
+                        color: colorScheme.onError,
                       ),
                     )
                   : const Icon(Icons.heart_broken),

@@ -2,7 +2,10 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../media/media_providers.dart';
@@ -63,7 +66,6 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
 
-    // Validate withdrawal days (if provided must be a positive int).
     final wDaysText = _withdrawalDaysController.text.trim();
     int? wDays;
     if (wDaysText.isNotEmpty) {
@@ -74,7 +76,6 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
       }
     }
 
-    // Validate cost (if provided must be a non-negative number).
     final costText = _costController.text.trim();
     double? cost;
     if (costText.isNotEmpty) {
@@ -143,6 +144,9 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final showDiagnosis = _type == HealthEventType.treatment ||
         _type == HealthEventType.checkup;
     final wDays = int.tryParse(_withdrawalDaysController.text.trim());
@@ -151,53 +155,66 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('Log health · ${widget.pig.tagId}')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(title: 'Type'),
             SegmentedButton<HealthEventType>(
               segments: HealthEventType.values
                   .map(
-                    (t) => ButtonSegment(
-                      value: t,
-                      label: Text(t.label),
-                    ),
+                    (t) => ButtonSegment(value: t, label: Text(t.label)),
                   )
                   .toList(),
               selected: {_type},
               onSelectionChanged: (s) => setState(() => _type = s.first),
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Date'),
-              subtitle: Text(DateFormat.yMMMd().format(_date)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final p = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime(2024),
-                  lastDate: DateTime.now(),
-                );
-                if (p != null) setState(() => _date = p);
-              },
+            const SectionHeader(title: 'Date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  DateFormat.yMMMd().format(_date),
+                  style: textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final p = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _date,
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime.now(),
+                  );
+                  if (p != null) setState(() => _date = p);
+                },
+              ),
             ),
+            const SectionHeader(title: 'Product'),
             TextField(
               controller: _productController,
               decoration: const InputDecoration(
-                labelText: 'Product (e.g., PRRS vaccine)',
+                hintText: 'e.g. PRRS vaccine',
               ),
             ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Dosage'),
             TextField(
               controller: _dosageController,
-              decoration: const InputDecoration(labelText: 'Dosage'),
+              decoration: const InputDecoration(hintText: 'Optional'),
             ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Route'),
             DropdownButtonFormField<HealthRoute?>(
               initialValue: _route,
-              decoration: const InputDecoration(labelText: 'Route'),
+              decoration: const InputDecoration(),
               items: [
                 const DropdownMenuItem(value: null, child: Text('—')),
                 ...HealthRoute.values.map(
@@ -207,17 +224,17 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
               onChanged: (v) => setState(() => _route = v),
             ),
             if (showDiagnosis) ...[
-              const SizedBox(height: 8),
+              const SectionHeader(title: 'Diagnosis'),
               TextField(
                 controller: _diagnosisController,
-                decoration: const InputDecoration(labelText: 'Diagnosis'),
+                decoration: const InputDecoration(),
               ),
             ],
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Withdrawal period'),
             TextField(
               controller: _withdrawalDaysController,
               decoration: const InputDecoration(
-                labelText: 'Withdrawal period (days, optional)',
+                hintText: 'Days (optional)',
                 helperText:
                     'Auto-generates a reminder task when withdrawal ends.',
               ),
@@ -225,63 +242,68 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
               onChanged: (_) => setState(() {}),
             ),
             if (showWithdrawalPreview) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Withdrawal ends: ${DateFormat.yMMMd().format(_date.add(Duration(days: wDays)))}',
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Withdrawal ends ${DateFormat.yMMMd().format(_date.add(Duration(days: wDays)))}',
+                  style: textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Cost (PHP)'),
             TextField(
               controller: _costController,
-              decoration: const InputDecoration(
-                labelText: 'Cost (PHP, optional)',
-              ),
+              decoration: const InputDecoration(hintText: 'Optional'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Photos',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Photos'),
             SizedBox(
-              height: 88,
+              height: 96,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
                   for (var i = 0; i < _photos.length; i++)
                     Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.only(right: 4),
                       child: Stack(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: Image.file(
                               _photos[i],
-                              width: 80,
-                              height: 80,
+                              width: 88,
+                              height: 88,
                               fit: BoxFit.cover,
                             ),
                           ),
                           Positioned(
-                            top: 0,
-                            right: 0,
+                            top: 4,
+                            right: 4,
                             child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
                               onTap: () => _removePhoto(i),
                               child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                  color: Colors.black54,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surface
+                                      .withValues(alpha: 0.9),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                  Icons.close,
+                                child: Icon(
+                                  Iconsax.close_circle,
                                   size: 16,
-                                  color: Colors.white,
+                                  color: colorScheme.onSurface,
                                 ),
                               ),
                             ),
@@ -289,35 +311,42 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                         ],
                       ),
                     ),
-                  GestureDetector(
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
                     onTap: _addPhoto,
                     child: Container(
-                      width: 80,
-                      height: 80,
+                      width: 88,
+                      height: 88,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(8),
+                        color: colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.add_a_photo),
+                      child: Icon(
+                        Iconsax.gallery_add,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: colorScheme.onPrimary,
+                      ),
                     )
                   : const Text('Save health record'),
             ),

@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/pig_providers.dart';
@@ -101,79 +104,110 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     return Scaffold(
       appBar: AppBar(title: Text('Farrowing · ${widget.sow.tagId}')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Farrowing date'),
-              subtitle: Text(DateFormat.yMMMd().format(_date)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final p = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime(2024),
-                  lastDate: DateTime.now(),
-                );
-                if (p != null) setState(() => _date = p);
-              },
+            const SectionHeader(title: 'Farrowing date'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Icon(
+                  Iconsax.calendar_1,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  DateFormat.yMMMd().format(_date),
+                  style: textTheme.titleMedium,
+                ),
+                trailing: Icon(
+                  Iconsax.arrow_right_3,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onTap: () async {
+                  final p = await AdaptiveDatePicker.show(
+                    context: context,
+                    initial: _date,
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime.now(),
+                  );
+                  if (p != null) setState(() => _date = p);
+                },
+              ),
             ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Counts'),
             TextField(
               controller: _liveController,
               decoration: const InputDecoration(labelText: 'Live born'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _stillController,
               decoration: const InputDecoration(labelText: 'Stillborn'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _mummController,
               decoration: const InputDecoration(labelText: 'Mummified'),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Average birth weight'),
             TextField(
               controller: _weightController,
-              decoration: const InputDecoration(
-                labelText: 'Avg birth weight (kg, optional)',
-              ),
+              decoration: const InputDecoration(hintText: 'kg (optional)'),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
             ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Create litter batch'),
-              subtitle: const Text('Tracks the piglets as a group'),
-              value: _createBatch,
-              onChanged: (v) => setState(() => _createBatch = v),
+            const SizedBox(height: 16),
+            Card(
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                title: Text(
+                  'Create litter batch',
+                  style: textTheme.titleMedium,
+                ),
+                subtitle: Text(
+                  'Tracks the piglets as a group',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                value: _createBatch,
+                onChanged: (v) => setState(() => _createBatch = v),
+              ),
             ),
-            const SizedBox(height: 8),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notesController,
-              decoration:
-                  const InputDecoration(labelText: 'Notes (optional)'),
+              decoration: const InputDecoration(hintText: 'Optional'),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: colorScheme.onPrimary,
+                      ),
                     )
                   : const Text('Save farrowing'),
             ),

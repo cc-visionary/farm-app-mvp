@@ -22,7 +22,8 @@ This spec defines **Sub-project A only**. Feed/financials, bilingual UX, push no
 
 ## 3. Non-goals
 
-- Feed/medicine inventory tracking, cost tracking, sales records, P&L reports (Sub-project B).
+- Feed/medicine inventory tracking, cost tracking, sales records, P&L reports, construction-project tracking, materials inventory (Sub-project B).
+- Feed Conversion Ratio (needs feed consumption data → Sub-project B).
 - English ↔ Tagalog localization (Sub-project C — English-only MVP).
 - Push notifications (Sub-project D — in-app task list only).
 - Vet telemedicine appointments / video consults (Sub-project D — photo attachments only, no scheduling).
@@ -30,6 +31,7 @@ This spec defines **Sub-project A only**. Feed/financials, bilingual UX, push no
 - Multi-site within a single farm (one farm = one site for MVP).
 - A user-facing chat / DM feature (out of scope; activity feed only).
 - Migration of existing test data — see §11.
+- Time-attendance / clock-in (Sub-project D). Workforce module covers scheduling only.
 
 ## 4. User personas & roles
 
@@ -106,9 +108,28 @@ farms/{farmId}
         actorUserId, actorDisplayName (denormalized snapshot),
         action: 'pig_added'|'breeding_logged'|'farrowing_logged'|
                 'health_logged'|'mortality_logged'|'weight_logged'|
-                'pig_moved'|'task_completed'|'member_added'|...,
+                'pig_moved'|'task_completed'|'member_added'|
+                'equipment_added'|'maintenance_logged'|'shift_assigned'|...,
         entityType, entityId, areaId?, summary (denormalized 1-line),
         timestamp
+  └─ equipment/{equipmentId}
+        name, type: 'ventilation'|'feeder'|'water_pump'|'generator'|
+                    'scale'|'vehicle'|'structure'|'tool'|'other',
+        areaId? (location), status: 'in_use'|'available'|'needs_repair'|'retired',
+        purchaseDate?, purchaseCostPhp?, photoUrl?, notes?,
+        createdBy, createdAt, updatedAt
+        └─ maintenance_records/{id}
+              type: 'preventive'|'repair'|'inspection',
+              date, performedBy? (free text — may be external technician),
+              partsReplaced?, costPhp?, photoUrls[], notes?,
+              createdBy, createdAt
+  └─ shifts/{shiftId}
+        name (e.g., "Morning Farrowing"),
+        pattern: 'daily'|'weekly',
+        daysOfWeek: number[]  (0=Sun..6=Sat; empty for 'daily'),
+        startTime, endTime  (HH:mm strings),
+        assignedAreaId, assignedUserIds: string[],
+        notes?, createdBy, createdAt, updatedAt
 ```
 
 **Why sub-collections instead of top-level collections with `farmId` fields:** scoped security rules become trivial (`request.auth.uid in /databases/.../farms/{farmId}/members`), queries don't need composite indexes for the most common access pattern (everything inside one farm), and the structure mirrors how users mentally model "this pig's farrowing history."
@@ -128,6 +149,7 @@ farms/{farmId}
 - `connectivity_plus` — offline banner
 - `uuid` — local IDs
 - `cached_network_image` — efficient photo display
+- `fl_chart` — yield report charts
 - `fake_cloud_firestore` (dev only) — repository tests
 
 **File structure (after refactor):**
@@ -166,6 +188,15 @@ lib/src/
     │                    tasks_screen.dart
     ├─ activity/         activity_entry.dart, activity_repository.dart,
     │                    activity_providers.dart, activity_feed_widget.dart
+    ├─ equipment/        equipment_model.dart, maintenance_record.dart,
+    │                    equipment_repository.dart, equipment_providers.dart,
+    │                    equipment_list_screen.dart, equipment_detail_screen.dart,
+    │                    add_edit_equipment_screen.dart, log_maintenance_screen.dart
+    ├─ shifts/           shift_model.dart, shift_repository.dart,
+    │                    shift_providers.dart, shifts_screen.dart,
+    │                    edit_shift_screen.dart, roster_widget.dart
+    ├─ yield/            yield_metrics.dart, yield_calculator.dart,
+    │                    yield_providers.dart, yield_screen.dart
     ├─ media/            photo_picker.dart, photo_upload_service.dart,
     │                    photo_upload_queue.dart
     ├─ settings/         (existing, extended)
@@ -284,7 +315,73 @@ The current `lib/src/features/animals/` and `lib/src/features/locations/` direct
 - Workers see entries only from their assigned areas by default; Owner/Manager/Vet see everything.
 - Activity entries are written via a wrapper repository method that writes both the source record and the activity entry in a single Firestore batch. No Cloud Function needed.
 
-### 7.11 Dashboard (replaces hardcoded current dashboard)
+### 7.11 Equipment & maintenance
+
+- **Equipment list screen** (under Settings, accessible to all roles read-only; edit by Manager/Owner):
+  - Grouped by `type` (Ventilation, Feeder, Water pump, Generator, Scale, Vehicle, Structure, Tool, Other) with a status pill (**in use / available / needs repair / retired**).
+  - Filter by area and by status. "Needs repair" filter is one-tap (Owner/Manager triage view).
+  - Status quick-toggle on each card: tap pill → cycle through in use → available → needs repair.
+- **Equipment detail screen:**
+  - Profile: name, type, area, status, purchase date, purchase cost (PHP), photo, notes.
+  - Maintenance history tab: chronological list of maintenance records with cost totals.
+- **Add/Edit equipment** (Manager/Owner): name, type, area, status, optional purchase date + cost, photo.
+- **Log maintenance** (Manager/Owner): type (preventive / repair / inspection), date, performed by (free text — may be external technician), parts replaced, cost, photos, notes.
+- Maintenance writes also create an `activity/` entry with action `maintenance_logged`.
+- Structures (e.g., a specific barn) are modeled as equipment of `type: 'structure'`, distinct from `areas/` which are operational zones. A barn is an asset; "Farrowing Area 1" is a zone — they can coexist.
+
+### 7.12 Shifts & roster (workforce allocation)
+
+- **Shifts screen** (Manager/Owner):
+  - List of recurring shifts: name, area, days, time window, assigned workers.
+  - "Today's Roster" header card showing who's working which area today (derived from shifts where `daysOfWeek` includes today's day-of-week or `pattern: 'daily'`).
+- **Edit shift screen** (Manager/Owner): name, pattern (daily / weekly), days-of-week multi-select (weekly only), start time + end time, area, workers multi-select (only members with role=worker), notes.
+- **Roster widget** (on the Dashboard for Owner/Manager; on "My Schedule" for workers):
+  - Owner/Manager: today's full roster grouped by area.
+  - Worker: only their own assignments for today + the next 6 days.
+- Workforce module does NOT replace the existing Tasks system — tasks remain per-event work units, shifts are recurring presence assignments. A worker assigned to a shift in the Farrowing area inherits that as their *current* `assignedAreaIds[]` filter for the duration of the shift (UI hint only; full membership area assignments remain authoritative for permissions).
+- Time-attendance / clock-in is explicitly out of scope (see §3).
+
+### 7.13 Yield reports
+
+- **Yield Reports screen** (bottom-nav "Reports" tab — replaces the current placeholder):
+  - Period selector at top: 7d / 30d / 90d / YTD / All-time. Affects all metrics below.
+  - **Herd productivity card:**
+    - PSY estimate (pigs weaned / active sow / year), derived from farrowing records' `liveBorn - preweaningMortalityCount` over period.
+    - Avg litter size (live born), avg stillbirth count.
+    - Stillbirth rate (stillborn / (liveBorn + stillborn)).
+    - Pre-weaning mortality rate (deaths under 28 days / litter total).
+    - Breeding success rate (confirmed pregnancies / total inseminations).
+  - **Growth & finishing card:**
+    - Average daily gain (ADG), computed only when ≥2 weight log entries exist for a pig; aggregated mean across grow-finish pigs.
+    - Active grow-finish batches: count, total head, avg days on feed.
+  - **Mortality card:**
+    - Overall mortality rate (deceased in period / herd at period start).
+    - Bar chart by area.
+    - Top 3 causes (from `mortality_record.cause`).
+  - **Output card** (lightweight stand-in until Sub-project B adds sales):
+    - Pigs marked `status: sold` in period (count).
+    - Pigs marked `status: culled` in period (count).
+- All metrics computed client-side from streamed Firestore data via `lib/src/features/yield/yield_calculator.dart` (pure functions, fully unit-testable).
+- Charts use `fl_chart`.
+
+### 7.14 Farm Layout (spatial overview)
+
+A non-geographic "map" view giving the owner/manager an at-a-glance picture of the farm's spatial state.
+
+- **Farm Layout screen** (accessible from Dashboard "View layout" button and as a bottom-nav option for Owner/Manager):
+  - Vertical scroll of **area cards**, ordered by purpose (Breeding → Gestation → Farrowing → Nursery → Grow-Finish → Quarantine → Boar Pen → Isolation → Other).
+  - Each card shows:
+    - Area name + purpose badge.
+    - Pig occupancy: `X / Y` where Y = sum of pen capacities (or "—" if not set).
+    - Pen mini-grid: each pen as a tile colored by occupancy (green ≤50%, yellow ≤80%, red >80%). Capacity overlaid as text.
+    - **Equipment chips** below the pen grid: one chip per equipment item in this area, colored by status (green=in use, grey=available, red=needs repair). Tappable → equipment detail.
+    - Pending tasks count for the area.
+    - Active workers right now (from Shifts → Today's Roster) as small avatar stack.
+  - "Drag-to-rearrange order" disabled — order is fixed by purpose. (Custom ordering is out of scope; can come in a later sub-project.)
+- Workers see Farm Layout filtered to their assigned areas, with a one-tap toggle to see all.
+- No GPS, no map tiles, no canvas-based coordinates. This is **purely a structured visual summary** — building a true geographic map is deferred.
+
+### 7.15 Dashboard (replaces hardcoded current dashboard)
 
 Top-to-bottom:
 1. Greeting + current farm name + farm switcher (AppBar).
@@ -294,7 +391,7 @@ Top-to-bottom:
 5. **Recent activity** (top 8 entries, expandable to full Activity tab).
 6. **Offline banner** at the top when `connectivity_plus` reports no connection.
 
-### 7.12 Permissions
+### 7.16 Permissions
 
 A single `PermissionService` (`lib/src/core/permissions/permission_service.dart`) exposes pure functions like:
 
@@ -303,20 +400,22 @@ bool canEditPig(Role role, Pig pig, String userId);
 bool canDeleteHealthRecord(Role role, HealthRecord r, String userId);
 bool canInviteMembers(Role role);
 bool canSwitchToArea(Role role, List<String> assignedAreaIds, String areaId);
+bool canEditEquipment(Role role);
+bool canEditShifts(Role role);
 ```
 
 UI calls these to gate buttons; the same logic is mirrored in Firestore security rules (written as part of implementation, not in this design doc).
 
 Worker scoping is **soft** — they default to their assigned areas but can switch to others. The UI shows a banner "Viewing outside your assigned area" when they do.
 
-### 7.13 Photo capture
+### 7.17 Photo capture
 
 - `PhotoPicker` widget — opens action sheet with Camera / Gallery / Cancel.
 - On pick, image is compressed in-memory (`flutter_image_compress` or built-in `image_picker` quality flag) to ≤1280px max dimension at ~80% quality. Target ≤200 KB per photo.
 - Upload to `farms/{farmId}/{recordType}/{recordId}/{n}.jpg` in Firebase Storage.
 - **Offline path:** if upload fails, the local file path + target Storage path are enqueued in `photo_upload_queue` (persisted via `shared_preferences`). A reconnect listener retries. The health/mortality record's `photoUrls` field is updated when the upload completes.
 
-### 7.14 Offline behavior
+### 7.18 Offline behavior
 
 - Firestore offline persistence (already enabled by default in current setup — verify in code).
 - A small "Offline · changes will sync" banner appears via `OfflineBanner` when `connectivity_plus.onConnectivityChanged` reports `none`.
@@ -335,6 +434,13 @@ Worker scoping is **soft** — they default to their assigned areas but can swit
 | Log breeding / farrowing | ✓ | ✓ | ✓² | – |
 | Log health record | ✓ | ✓ | ✓² | ✓ |
 | Log mortality | ✓ | ✓ | ✓² | – |
+| Add/edit equipment | ✓ | ✓ | – | – |
+| Quick-toggle equipment status | ✓ | ✓ | ✓² | – |
+| Log maintenance | ✓ | ✓ | ✓² | – |
+| Manage shifts (create/edit/assign) | ✓ | ✓ | – | – |
+| View own shifts | ✓ | ✓ | ✓ | – |
+| View yield reports | ✓ | ✓ | ✓³ | ✓ |
+| View farm layout | ✓ | ✓ | ✓³ | ✓ |
 | Edit own record < 24h | ✓ | ✓ | ✓ | ✓ |
 | Edit anyone's record anytime | ✓ | ✓ | – | – |
 | Delete records | ✓ | ✓ | – | – |
@@ -352,7 +458,8 @@ Worker scoping is **soft** — they default to their assigned areas but can swit
 - **Repository tests:** use `fake_cloud_firestore` — no mocks. Cover CRUD + the "write source record + write activity entry atomically" flow.
 - **Permission service tests:** pure function tests covering each row of the matrix in §8.
 - **Task generator tests:** verify expected tasks are created from breeding/health writes; verify idempotency on re-run.
-- **Widget tests (3 highest-value screens):** PigDetail (renders by role), BreedingLogScreen (state machine validation), AddEditPigScreen (form validation).
+- **Yield calculator tests:** pure function tests on synthetic Pig/BreedingRecord/FarrowingRecord/MortalityRecord fixtures covering every metric.
+- **Widget tests (4 highest-value screens):** PigDetail (renders by role), BreedingLogScreen (state machine validation), AddEditPigScreen (form validation), FarmLayoutScreen (renders areas with equipment + occupancy from fake data).
 - **Manual smoke test checklist** (in implementation plan) covers the cross-role flows end-to-end.
 
 ## 10. Implementation slices (preview for the implementation plan)
@@ -362,17 +469,20 @@ Rough ordering — final plan is the next artifact, produced by `writing-plans`:
 1. **Cleanup & scaffolding** — wipe Firestore test data, delete `animals/`/`locations/` dirs, set up new folder skeleton, add packages, regenerate firebase options.
 2. **Multi-farm + team foundation** — `members`, `invitations`, farm switcher, create-farm flow, accept-invite flow, permission service, updated router redirects.
 3. **Areas & pens** — replace flat `locations/` with `areas/{id}/pens/{id}`.
-4. **Pig model + Pig Detail (read-only) + Pigs list (with working search/filter)** — write the new data model, port the existing animals list features over.
-5. **Add/Edit Pig with photo** — wire the broken Save flow; add photo capture.
-6. **Breeding log + task generator (breeding tasks only)**.
-7. **Farrowing log + litter batch creation**.
-8. **Health log + photo attachments + withdrawal task** — and the Vet role's write path.
-9. **Mortality log**.
-10. **Tasks screen + manual task creation + assignment**.
-11. **Activity feed** (dashboard card + full screen).
-12. **Real dashboard** — snapshot card, area occupancy, replaces hardcoded values.
-13. **Offline banner + photo upload queue**.
-14. **Firestore security rules + final permission audit**.
+4. **Equipment + maintenance** — CRUD, status quick-toggle, maintenance log with photos.
+5. **Pig model + Pig Detail (read-only) + Pigs list (with working search/filter)**.
+6. **Add/Edit Pig with photo** — wire the broken Save flow; add photo capture.
+7. **Breeding log + task generator (breeding tasks only)**.
+8. **Farrowing log + litter batch creation**.
+9. **Health log + photo attachments + withdrawal task** — and the Vet role's write path.
+10. **Mortality log**.
+11. **Tasks screen + manual task creation + assignment**.
+12. **Shifts + roster (workforce allocation)**.
+13. **Activity feed** (dashboard card + full screen).
+14. **Yield reports** — replaces placeholder Reports tab, with `fl_chart`.
+15. **Farm Layout screen** — spatial overview integrating areas, equipment, occupancy, roster.
+16. **Real dashboard** — snapshot card, area occupancy, replaces hardcoded values. Offline banner + photo upload queue.
+17. **Firestore security rules + final permission audit**.
 
 Each slice is independently shippable behind the current branch's working state.
 
@@ -415,4 +525,8 @@ Sub-project A is "done" when:
 7. Photo upload works on a real Android device, including with airplane mode toggled mid-upload.
 8. A user belonging to two farms can switch between them and see independent data sets.
 9. Workers default to seeing their assigned areas, with a one-tap toggle to see all.
-10. All tests pass; Firestore security rules deny cross-farm reads/writes.
+10. The Equipment list correctly groups by type, allows quick status toggle (in use ↔ available ↔ needs repair), and shows maintenance history per item.
+11. A Manager can create a weekly shift assigning two workers to the Farrowing area on Mon/Wed/Fri, and those workers see the shift in their "My Schedule" view; the Roster widget shows them as active on those days.
+12. The Yield Reports tab renders all six metric cards with non-zero values when seeded with sample data, and recomputes when the period selector changes.
+13. The Farm Layout screen displays every area as a card with pen occupancy tiles, equipment status chips, and active-worker avatars derived from today's roster.
+14. All tests pass; Firestore security rules deny cross-farm reads/writes.

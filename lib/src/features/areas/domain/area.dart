@@ -47,7 +47,7 @@ class Area {
     return Area(
       id: doc.id,
       farmId: farmId,
-      name: d['name'] as String,
+      name: d['name'] as String? ?? '(unnamed)',
       purpose: AreaPurpose.fromString(d['purpose'] as String? ?? 'other'),
       notes: d['notes'] as String?,
       createdAt: d['createdAt'] as Timestamp? ?? Timestamp.now(),

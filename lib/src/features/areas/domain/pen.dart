@@ -25,7 +25,7 @@ class Pen {
       id: doc.id,
       farmId: farmId,
       areaId: areaId,
-      name: d['name'] as String,
+      name: d['name'] as String? ?? '(unnamed)',
       capacity: d['capacity'] as int?,
       currentOccupancy: (d['currentOccupancy'] as int?) ?? 0,
       notes: d['notes'] as String?,

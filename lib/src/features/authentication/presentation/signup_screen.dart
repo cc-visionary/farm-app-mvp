@@ -181,7 +181,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                                       email: _emailController.text.trim(),
                                       password: _passwordController.text.trim(),
                                     );
-                                if (mounted) context.go('/create-farm');
+                                if (mounted) context.go('/setup');
                               } catch (e) {
                                 if (mounted) {
                                   setState(() {

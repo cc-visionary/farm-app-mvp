@@ -11,6 +11,7 @@ import '../features/equipment/presentation/equipment_list_screen.dart';
 import '../features/farms/application/farm_providers.dart';
 import '../features/farms/presentation/create_farm_screen.dart';
 import '../features/farms/presentation/farm_setup_screen.dart';
+import '../features/pigs/presentation/pigs_list_screen.dart';
 import '../features/team/application/team_providers.dart';
 import '../features/team/presentation/team_management_screen.dart';
 
@@ -59,6 +60,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/team', builder: (c, s) => const TeamManagementScreen()),
       GoRoute(path: '/areas', builder: (c, s) => const AreasListScreen()),
       GoRoute(path: '/equipment', builder: (c, s) => const EquipmentListScreen()),
+      GoRoute(path: '/pigs', builder: (c, s) => const PigsListScreen()),
       GoRoute(
         path: '/',
         builder: (c, s) => const Scaffold(

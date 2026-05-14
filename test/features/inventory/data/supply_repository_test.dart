@@ -100,4 +100,139 @@ void main() {
     expect(list[1].name, 'Aloe spray');
     expect(list[2].name, 'Zinc supplement');
   });
+
+  group('logConsumption', () {
+    test('writes movement, decrements stock, writes activity (atomic)', () async {
+      final f = FakeFirebaseFirestore();
+      final repo = SupplyRepository(f, ActivityRepository(f));
+      final id = await repo.createSupply(
+        farmId: 'f1',
+        name: 'Feed',
+        category: SupplyCategory.feed,
+        unit: SupplyUnit.sack,
+        unitsPerPackage: 50,
+        lowStockThreshold: null,
+        notes: null,
+        actorUserId: 'u',
+        actorDisplayName: 'J',
+      );
+      // Seed stock manually (createSupply starts at 0).
+      await f
+          .collection('farms')
+          .doc('f1')
+          .collection('supplies')
+          .doc(id)
+          .update({'currentStock': 10});
+
+      await repo.logConsumption(
+        farmId: 'f1',
+        supplyId: id,
+        supplyName: 'Feed',
+        quantity: 3,
+        penId: 'pen1',
+        derivedBatchId: 'batch1',
+        healthRecordId: null,
+        notes: null,
+        actorUserId: 'u',
+        actorDisplayName: 'J',
+      );
+
+      final supply = await f
+          .collection('farms')
+          .doc('f1')
+          .collection('supplies')
+          .doc(id)
+          .get();
+      expect(supply.data()!['currentStock'], 7);
+
+      final movements = await f
+          .collection('farms')
+          .doc('f1')
+          .collection('supply_movements')
+          .get();
+      expect(movements.docs, hasLength(1));
+      expect(movements.docs.first.data()['quantity'], -3);
+      expect(movements.docs.first.data()['type'], 'consumption');
+      expect(movements.docs.first.data()['relatedPenId'], 'pen1');
+      expect(movements.docs.first.data()['relatedBatchId'], 'batch1');
+
+      final activity = await f
+          .collection('farms')
+          .doc('f1')
+          .collection('activity')
+          .get();
+      final logEntry = activity.docs.where(
+        (d) => d.data()['action'] == 'supply_consumed',
+      );
+      expect(logEntry, hasLength(1));
+    });
+
+    test('rejects consumption exceeding currentStock', () async {
+      final f = FakeFirebaseFirestore();
+      final repo = SupplyRepository(f, ActivityRepository(f));
+      final id = await repo.createSupply(
+        farmId: 'f1',
+        name: 'Feed',
+        category: SupplyCategory.feed,
+        unit: SupplyUnit.sack,
+        unitsPerPackage: null,
+        lowStockThreshold: null,
+        notes: null,
+        actorUserId: 'u',
+        actorDisplayName: 'J',
+      );
+      await f
+          .collection('farms')
+          .doc('f1')
+          .collection('supplies')
+          .doc(id)
+          .update({'currentStock': 2});
+      expect(
+        () => repo.logConsumption(
+          farmId: 'f1',
+          supplyId: id,
+          supplyName: 'Feed',
+          quantity: 5,
+          penId: null,
+          derivedBatchId: null,
+          healthRecordId: null,
+          notes: null,
+          actorUserId: 'u',
+          actorDisplayName: 'J',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('rejects negative or zero quantity', () async {
+      final f = FakeFirebaseFirestore();
+      final repo = SupplyRepository(f, ActivityRepository(f));
+      final id = await repo.createSupply(
+        farmId: 'f1',
+        name: 'F',
+        category: SupplyCategory.feed,
+        unit: SupplyUnit.sack,
+        unitsPerPackage: null,
+        lowStockThreshold: null,
+        notes: null,
+        actorUserId: 'u',
+        actorDisplayName: 'J',
+      );
+      expect(
+        () => repo.logConsumption(
+          farmId: 'f1',
+          supplyId: id,
+          supplyName: 'F',
+          quantity: 0,
+          penId: null,
+          derivedBatchId: null,
+          healthRecordId: null,
+          notes: null,
+          actorUserId: 'u',
+          actorDisplayName: 'J',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
 }

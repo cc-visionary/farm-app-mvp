@@ -103,4 +103,68 @@ class SupplyRepository {
         .snapshots()
         .map((d) => d.exists ? Supply.fromFirestore(d, farmId: farmId) : null);
   }
+
+  /// Logs supply consumption tied to a pen. Derives primary batch at write time.
+  /// Atomic: writes a movement, decrements supply.currentStock, writes activity.
+  /// Throws [ArgumentError] if quantity is not positive.
+  /// Throws [StateError] if currentStock - quantity would go negative.
+  Future<void> logConsumption({
+    required String farmId,
+    required String supplyId,
+    required String supplyName,
+    required num quantity, // positive value; will be stored as negative
+    required String? penId,
+    required String? derivedBatchId,
+    required String? healthRecordId,
+    required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
+  }) async {
+    if (quantity <= 0) {
+      throw ArgumentError('quantity must be positive');
+    }
+    await _firestore.runTransaction((tx) async {
+      final supplyRef = _col(farmId).doc(supplyId);
+      final snap = await tx.get(supplyRef);
+      if (!snap.exists) throw StateError('Supply not found.');
+      final current = (snap.data()!['currentStock'] as num?) ?? 0;
+      if (current - quantity < 0) {
+        throw StateError('Insufficient stock — only $current available.');
+      }
+      final movementRef = _firestore
+          .collection('farms')
+          .doc(farmId)
+          .collection('supply_movements')
+          .doc();
+      tx.set(movementRef, {
+        'supplyId': supplyId,
+        'type': 'consumption',
+        'quantity': -quantity,
+        if (penId != null) 'relatedPenId': penId,
+        if (derivedBatchId != null) 'relatedBatchId': derivedBatchId,
+        if (healthRecordId != null) 'relatedHealthRecordId': healthRecordId,
+        if (notes != null) 'notes': notes,
+        'createdBy': actorUserId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      tx.update(supplyRef, {
+        'currentStock': FieldValue.increment(-quantity),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      final activityRef = _firestore
+          .collection('farms')
+          .doc(farmId)
+          .collection('activity')
+          .doc();
+      tx.set(activityRef, {
+        'actorUserId': actorUserId,
+        'actorDisplayName': actorDisplayName,
+        'action': 'supply_consumed',
+        'entityType': 'supply',
+        'entityId': supplyId,
+        'summary': '$actorDisplayName used $quantity of "$supplyName"',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 }

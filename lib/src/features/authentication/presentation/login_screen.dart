@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/shared_dialogs.dart';
 import '../application/auth_providers.dart';
 
@@ -21,16 +22,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Add listeners to clear the error when the user starts typing
     _emailController.addListener(_clearError);
     _passwordController.addListener(_clearError);
   }
 
   void _clearError() {
     if (_errorMessage != null) {
-      setState(() {
-        _errorMessage = null;
-      });
+      setState(() => _errorMessage = null);
     }
   }
 
@@ -39,17 +37,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please fill in both fields.';
-      });
+      setState(() => _errorMessage = 'Please fill in both fields.');
       return false;
     }
-    // Basic email format check using a regular expression
     final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!emailRegex.hasMatch(email)) {
-      setState(() {
-        _errorMessage = 'Please enter a valid email address.';
-      });
+      setState(() => _errorMessage = 'Please enter a valid email address.');
       return false;
     }
     return true;
@@ -64,60 +57,99 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _submit() async {
+    if (!_validateInputs()) return;
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(authRepositoryProvider).signInWithEmail(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Access theme for specific text styling
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
     return Scaffold(
       body: Stack(
         children: [
-          // Info Button positioned at the top right
           Positioned(
-            top: 40,
-            right: 16,
+            top: 8,
+            right: 8,
             child: SafeArea(
               child: IconButton(
-                icon: const Icon(Icons.info_outline, color: Colors.black54),
+                icon: Icon(
+                  Iconsax.info_circle,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                tooltip: 'About',
                 onPressed: () => showAppInfoDialog(context),
               ),
             ),
           ),
-          // Main Content
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // App Logo
-                    const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.black,
-                      child: Icon(Icons.eco, color: Colors.white, size: 50),
+                    // Brand mark
+                    Center(
+                      child: Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Iconsax.pet,
+                          size: 48,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Farm CRM',
+                      style: textTheme.headlineLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Sign in to your farm',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
 
-                    // Email Label
-                    const Text(
-                      'Email',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
+                    Text('Email', style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(hintText: 'Email'),
+                      autocorrect: false,
+                      decoration: const InputDecoration(hintText: 'you@farm.ph'),
                     ),
                     const SizedBox(height: 16),
 
-                    // Password Label
-                    const Text(
-                      'Password',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
+                    Text('Password', style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _passwordController,
@@ -127,105 +159,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
-                                ? Icons.visibility
-                                : Icons.visibility_off,
+                                ? Iconsax.eye_slash
+                                : Iconsax.eye,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _isPasswordVisible = !_isPasswordVisible;
-                            });
-                          },
+                          onPressed: () => setState(
+                            () => _isPasswordVisible = !_isPasswordVisible,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
 
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.error,
                         ),
+                        textAlign: TextAlign.center,
                       ),
+                    ],
 
-                    ElevatedButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              // First, run validation
-                              if (!_validateInputs()) {
-                                return; // Stop if validation fails
-                              }
-
-                              setState(() => _isLoading = true);
-
-                              try {
-                                await ref
-                                    .read(authRepositoryProvider)
-                                    .signInWithEmail(
-                                      email: _emailController.text.trim(),
-                                      password: _passwordController.text.trim(),
-                                    );
-                              } catch (e) {
-                                if (mounted) {
-                                  setState(() {
-                                    _errorMessage = e.toString().replaceFirst(
-                                      'Exception: ',
-                                      '',
-                                    );
-                                  });
-                                }
-                              } finally {
-                                // Ensure the loading indicator is turned off, even if there's an error
-                                if (mounted) {
-                                  setState(
-                                    () => _isLoading = false,
-                                  ); // <-- STOP loading
-                                }
-                              }
-                            },
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: _isLoading ? null : _submit,
                       child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
                               child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 3,
+                                color: colorScheme.onPrimary,
+                                strokeWidth: 2.5,
                               ),
                             )
-                          : const Text('Login'),
+                          : const Text('Sign in'),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                    // Sign Up Link
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          "Don't have an account? ",
-                          style: textTheme.bodyMedium,
+                          "Don't have an account?",
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         TextButton(
                           onPressed: () => context.go('/signup'),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            'Sign Up',
-                            style: textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.secondary,
-                            ),
-                          ),
+                          child: const Text('Sign up'),
                         ),
                       ],
                     ),

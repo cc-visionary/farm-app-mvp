@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../areas/application/area_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/shift_providers.dart';
@@ -10,19 +12,34 @@ class RosterWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final today = DateTime.now();
     final shifts =
         ref.watch(shiftsForDateProvider((farmId: farmId, date: today)));
-    final areas = ref.watch(areasStreamProvider(farmId)).asData?.value ?? const [];
+    final areas =
+        ref.watch(areasStreamProvider(farmId)).asData?.value ?? const [];
 
     if (shifts.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('No shifts scheduled today.'),
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionHeader(title: "Today's roster"),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No shifts scheduled today.',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
 
@@ -32,44 +49,114 @@ class RosterWidget extends ConsumerWidget {
       byArea.putIfAbsent(s.assignedAreaId, () => []).add(s);
     }
 
-    return Card(
-      color: Colors.green.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Today's Roster",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: "Today's roster"),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < byArea.entries.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 16),
+                  _AreaGroup(
+                    areaId: byArea.entries.elementAt(i).key,
+                    shifts: byArea.entries.elementAt(i).value,
+                    areas: areas,
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 8),
-            ...byArea.entries.map((e) {
-              final areaName = areas
-                  .where((a) => a.id == e.key)
-                  .map((a) => a.name)
-                  .firstOrNull ??
-                  e.key;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      areaName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    ...e.value.map((s) => Text(
-                          '  • ${s.name} (${s.startTime}-${s.endTime}) — '
-                          '${s.assignedUserIds.join(", ")}',
-                        )),
-                  ],
-                ),
-              );
-            }),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AreaGroup extends StatelessWidget {
+  const _AreaGroup({
+    required this.areaId,
+    required this.shifts,
+    required this.areas,
+  });
+  final String areaId;
+  final List<Shift> shifts;
+  final List areas;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final areaName = areas
+            .where((a) => a.id == areaId)
+            .map((a) => a.name)
+            .firstOrNull ??
+        areaId;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Iconsax.location,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              areaName,
+              style: textTheme.titleMedium,
+            ),
           ],
         ),
-      ),
+        const SizedBox(height: 8),
+        for (final s in shifts) ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 24, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurface,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: s.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        TextSpan(
+                          text: '  ${s.startTime}–${s.endTime}',
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (s.assignedUserIds.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, bottom: 8),
+              child: Text(
+                s.assignedUserIds.join(', '),
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }

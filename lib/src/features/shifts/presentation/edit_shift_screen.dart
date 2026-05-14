@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
 import '../../../core/permissions/role.dart';
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../areas/application/area_providers.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
@@ -50,6 +53,15 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
   Future<void> _delete() async {
     final farmId = ref.read(selectedFarmIdProvider);
     if (farmId == null || widget.existing == null) return;
+    final ok = await ConfirmDialog.show(
+      context: context,
+      title: 'Delete shift?',
+      message:
+          'Delete "${widget.existing!.name}"? Workers will no longer be assigned to it.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!ok) return;
     await ref.read(shiftRepositoryProvider).deleteShift(
           farmId: farmId,
           shiftId: widget.existing!.id,
@@ -124,6 +136,9 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     final areas = farmId != null
         ? ref.watch(areasStreamProvider(farmId)).asData?.value ?? const []
@@ -132,7 +147,7 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
         ? ref.watch(membersStreamProvider(farmId)).asData?.value ?? const []
         : const [];
     final workers = members.where((m) => m.role == Role.worker).toList();
-    const dowNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dowNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     // Guard the dropdown initialValue against an area that no longer exists.
     final dropdownValue =
@@ -143,15 +158,16 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
         title: Text(widget.existing == null ? 'New shift' : 'Edit shift'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(title: 'Shift name'),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Shift name'),
+              decoration: const InputDecoration(hintText: 'e.g. Morning crew'),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Pattern'),
             SegmentedButton<ShiftPattern>(
               segments: ShiftPattern.values
                   .map(
@@ -162,9 +178,10 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
               onSelectionChanged: (s) => setState(() => _pattern = s.first),
             ),
             if (_pattern == ShiftPattern.weekly) ...[
-              const SizedBox(height: 12),
+              const SectionHeader(title: 'Days'),
               Wrap(
-                spacing: 6,
+                spacing: 8,
+                runSpacing: 8,
                 children: List.generate(
                   7,
                   (i) => FilterChip(
@@ -177,14 +194,16 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
                 ),
               ),
             ],
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Hours'),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _start,
                     decoration: const InputDecoration(
-                      labelText: 'Start (HH:mm)',
+                      labelText: 'Start',
+                      hintText: 'HH:mm',
+                      prefixIcon: Icon(Iconsax.clock),
                     ),
                   ),
                 ),
@@ -193,16 +212,18 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
                   child: TextField(
                     controller: _end,
                     decoration: const InputDecoration(
-                      labelText: 'End (HH:mm)',
+                      labelText: 'End',
+                      hintText: 'HH:mm',
+                      prefixIcon: Icon(Iconsax.clock),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Area'),
             DropdownButtonFormField<String>(
               initialValue: dropdownValue,
-              decoration: const InputDecoration(labelText: 'Area'),
+              decoration: const InputDecoration(hintText: 'Select area'),
               items: areas
                   .map<DropdownMenuItem<String>>(
                     (a) => DropdownMenuItem(
@@ -213,20 +234,23 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _areaId = v),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Workers',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
+            const SectionHeader(title: 'Workers'),
             if (workers.isEmpty)
-              const Text(
-                'No workers in this farm yet.',
-                style: TextStyle(color: Colors.grey),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'No workers in this farm yet.',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               )
             else
               Wrap(
-                spacing: 6,
+                spacing: 8,
+                runSpacing: 8,
                 children: workers
                     .map(
                       (m) => FilterChip(
@@ -242,23 +266,29 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
                     .toList(),
               ),
             const SizedBox(height: 24),
-            ElevatedButton(
+            FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const CircularProgressIndicator()
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: colorScheme.onPrimary,
+                        strokeWidth: 2.5,
+                      ),
+                    )
                   : const Text('Save shift'),
             ),
             if (widget.existing != null) ...[
-              const SizedBox(height: 8),
-              OutlinedButton(
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
+                  foregroundColor: colorScheme.error,
+                  side: BorderSide(color: colorScheme.error),
                 ),
                 onPressed: _delete,
-                child: const Text(
-                  'Delete',
-                  style: TextStyle(color: Colors.red),
-                ),
+                icon: const Icon(Iconsax.trash),
+                label: const Text('Delete shift'),
               ),
             ],
           ],

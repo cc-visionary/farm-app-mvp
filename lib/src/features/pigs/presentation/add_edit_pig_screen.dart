@@ -3,7 +3,11 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../areas/domain/pen.dart';
@@ -180,6 +184,8 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
   @override
   Widget build(BuildContext context) {
     final farmId = ref.watch(selectedFarmIdProvider);
+    final theme = Theme.of(context);
+    final isEditing = widget.existing != null;
     final areasAsync = farmId != null
         ? ref.watch(areasStreamProvider(farmId))
         : const AsyncValue<List<Area>>.data([]);
@@ -196,55 +202,33 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'Add pig' : 'Edit pig'),
+        title: Text(isEditing ? 'Edit pig' : 'Add pig'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            GestureDetector(
-              onTap: _pickPhoto,
-              child: Container(
-                height: 160,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                  image: _photoFile != null
-                      ? DecorationImage(
-                          image: FileImage(_photoFile!),
-                          fit: BoxFit.cover,
-                        )
-                      : widget.existing?.photoUrl != null
-                          ? DecorationImage(
-                              image: NetworkImage(widget.existing!.photoUrl!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                ),
-                child: _photoFile == null && widget.existing?.photoUrl == null
-                    ? const Center(
-                        child: Icon(
-                          Icons.add_a_photo,
-                          size: 48,
-                          color: Colors.grey,
-                        ),
-                      )
-                    : null,
-              ),
+            const SectionHeader(
+              title: 'Photo',
+              padding: EdgeInsets.only(top: 8, bottom: 8),
             ),
-            const SizedBox(height: 16),
+            _PhotoPicker(
+              photoFile: _photoFile,
+              existingUrl: widget.existing?.photoUrl,
+              onTap: _pickPhoto,
+            ),
+            const SectionHeader(title: 'Basic info'),
             TextField(
               controller: _tag,
               decoration: const InputDecoration(labelText: 'Tag ID'),
             ),
             const SizedBox(height: 12),
             SegmentedButton<PigSex>(
-              segments: PigSex.values
-                  .map(
-                    (s) => ButtonSegment(value: s, label: Text(s.label)),
-                  )
-                  .toList(),
+              segments: const [
+                ButtonSegment(value: PigSex.female, label: Text('Female')),
+                ButtonSegment(value: PigSex.male, label: Text('Male')),
+              ],
               selected: {_sex},
               onSelectionChanged: (s) => setState(() => _sex = s.first),
             ),
@@ -266,7 +250,8 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
             TextField(
               controller: _breed,
               decoration: const InputDecoration(
-                labelText: 'Breed (or type custom)',
+                labelText: 'Breed (custom)',
+                hintText: 'Type a custom breed or pick a common one above',
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -282,28 +267,22 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
               onChanged: (v) => setState(() => _stage = v ?? PigStage.grower),
             ),
             const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Birth date'),
-              subtitle: Text(
-                _birthDate?.toLocal().toString().split(' ')[0] ?? 'Select',
-              ),
-              trailing: const Icon(Icons.calendar_today),
+            _DateField(
+              label: 'Birth date',
+              value: _birthDate,
               onTap: () async {
-                final picked = await showDatePicker(
+                final picked = await AdaptiveDatePicker.show(
                   context: context,
-                  initialDate: _birthDate ?? DateTime.now(),
+                  initial: _birthDate ?? DateTime.now(),
                   firstDate: DateTime(2015),
                   lastDate: DateTime.now(),
                 );
                 if (picked != null) setState(() => _birthDate = picked);
               },
             ),
+            const SectionHeader(title: 'Location'),
             areasAsync.when(
               data: (areas) {
-                // Guard against stale _areaId not present in the current
-                // areas list (e.g. area was deleted after the pig was
-                // created). Setting a non-matching initialValue throws.
                 final knownIds = areas.map((a) => a.id).toSet();
                 final value = (_areaId != null && knownIds.contains(_areaId))
                     ? _areaId
@@ -326,7 +305,10 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                 );
               },
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Areas error: $e'),
+              error: (e, _) => Text(
+                'Areas error: $e',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ),
             const SizedBox(height: 12),
             pensAsync.when(
@@ -356,17 +338,21 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (e, _) => Text('Pens error: $e'),
+              error: (e, _) => Text(
+                'Pens error: $e',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Weight'),
             TextField(
               controller: _weight,
               decoration: const InputDecoration(
-                labelText: 'Weight (kg, optional)',
+                labelText: 'Current weight',
+                hintText: 'kg (optional)',
               ),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Lineage'),
             pigsAsync.when(
               data: (pigs) {
                 final pigId = widget.existing?.id;
@@ -429,23 +415,175 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (e, _) => Text('Pigs error: $e'),
+              error: (e, _) => Text(
+                'Pigs error: $e',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ),
-            const SizedBox(height: 12),
+            const SectionHeader(title: 'Notes'),
             TextField(
               controller: _notes,
-              decoration:
-                  const InputDecoration(labelText: 'Notes (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Notes (optional)',
+              ),
               maxLines: 3,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _busy ? null : _save,
-              child: _busy
-                  ? const CircularProgressIndicator()
-                  : const Text('Save'),
+            const SizedBox(height: 32),
+            SizedBox(
+              height: 48,
+              child: FilledButton(
+                onPressed: _busy ? null : _save,
+                child: _busy
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(isEditing ? 'Save changes' : 'Add pig'),
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoPicker extends StatelessWidget {
+  const _PhotoPicker({
+    required this.photoFile,
+    required this.existingUrl,
+    required this.onTap,
+  });
+
+  final File? photoFile;
+  final String? existingUrl;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasPhoto = photoFile != null || (existingUrl != null);
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(16),
+              image: photoFile != null
+                  ? DecorationImage(
+                      image: FileImage(photoFile!),
+                      fit: BoxFit.cover,
+                    )
+                  : existingUrl != null
+                      ? DecorationImage(
+                          image: NetworkImage(existingUrl!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+            ),
+            child: hasPhoto
+                ? null
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Iconsax.gallery_add,
+                          size: 40,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Add photo',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          if (hasPhoto)
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: theme.colorScheme.outline),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Iconsax.camera,
+                      size: 16,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Change photo',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateField extends StatelessWidget {
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final DateTime? value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: Icon(
+            Iconsax.calendar,
+            size: 20,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        child: Text(
+          value == null
+              ? 'Select'
+              : DateFormat.yMMMd().format(value!),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: value == null
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.onSurface,
+          ),
         ),
       ),
     );

@@ -33,3 +33,11 @@ final saleLineItemsProvider = StreamProvider.family<
         saleId: args.saleId,
       );
 });
+
+final saleForPigProvider =
+    FutureProvider.family<Sale?, ({String farmId, String pigId})>((ref, args) {
+  return ref.read(saleRepositoryProvider).findSaleForPig(
+        farmId: args.farmId,
+        pigId: args.pigId,
+      );
+});

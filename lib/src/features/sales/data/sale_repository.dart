@@ -198,4 +198,27 @@ class SaleRepository {
               s.docs.map((d) => Sale.fromFirestore(d, farmId: farmId)).toList(),
         );
   }
+
+  /// Finds the sale that contains this pig as a line item.
+  /// Uses a collection-group query on line_items. Returns null if not found.
+  Future<Sale?> findSaleForPig({
+    required String farmId,
+    required String pigId,
+  }) async {
+    final snap = await _firestore
+        .collectionGroup('line_items')
+        .where('pigId', isEqualTo: pigId)
+        .limit(1)
+        .get();
+    for (final doc in snap.docs) {
+      final saleRef = doc.reference.parent.parent;
+      if (saleRef == null) continue;
+      // Verify it's in the right farm.
+      final parts = saleRef.path.split('/');
+      if (parts[0] != 'farms' || parts[1] != farmId) continue;
+      final saleSnap = await saleRef.get();
+      if (saleSnap.exists) return Sale.fromFirestore(saleSnap, farmId: farmId);
+    }
+    return null;
+  }
 }

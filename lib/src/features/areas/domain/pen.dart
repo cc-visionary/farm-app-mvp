@@ -33,6 +33,7 @@ class Pen {
   }
 
   Map<String, dynamic> toMap() => {
+    'farmId': farmId,
     'name': name,
     if (capacity != null) 'capacity': capacity,
     'currentOccupancy': currentOccupancy,

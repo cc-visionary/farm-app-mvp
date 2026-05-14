@@ -66,6 +66,7 @@ class AreaRepository {
   }) async {
     final ref = _pens(farmId, areaId).doc();
     await ref.set({
+      'farmId': farmId,
       'name': name.trim(),
       if (capacity != null) 'capacity': capacity,
       'currentOccupancy': 0,
@@ -102,21 +103,20 @@ class AreaRepository {
   }
 
   /// Streams all pens across all areas for a farm — used by Farm Layout.
+  /// Uses a server-side `farmId` filter so this works under farm-isolation
+  /// security rules (Task 18) — clients can't read other farms' pens.
   Stream<List<Pen>> streamAllPens(String farmId) {
-    return _firestore.collectionGroup('pens').snapshots().map((s) {
-      return s.docs
-          .where((d) {
-            final parts = d.reference.path.split('/');
-            return parts.length >= 5 && parts[0] == 'farms' && parts[1] == farmId;
-          })
-          .map((d) {
-            final areaId = d.reference.parent.parent!.id;
-            return Pen.fromFirestore(d, farmId: farmId, areaId: areaId);
-          })
-          .toList();
-    });
+    return _firestore
+        .collectionGroup('pens')
+        .where('farmId', isEqualTo: farmId)
+        .snapshots()
+        .map((s) => s.docs.map((d) {
+              final areaId = d.reference.parent.parent!.id;
+              return Pen.fromFirestore(d, farmId: farmId, areaId: areaId);
+            }).toList());
   }
 
+  // TODO: enforce capacity, consider rename to adjustPenOccupancy
   Future<void> incrementPenOccupancy({
     required String farmId, required String areaId, required String penId, required int delta,
   }) async {

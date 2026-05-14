@@ -3979,4 +3979,2068 @@ git commit -m "feat(sales): Sale + SaleLineItem models with atomic multi-pig log
 
 ---
 
-_(Tasks 8-13 continue. Each follows the established TDD + commit cadence. Remaining tasks cover the Sales UI (list/detail/log), Pig Detail integration, BatchCostCalculator + ProfitabilityCalculator with full unit tests, Yield Reports extension with new Profitability card, per-batch profitability screens, Dashboard tiles, and Firestore Security Rules + final audit.)_
+---
+
+## Task 8: Sales UI — list, detail, and log-sale screens
+
+**Goal:** Three screens wrapping the SaleRepository: list, detail, and the multi-pig log-sale flow.
+
+**Files:**
+- Create:
+  - `lib/src/features/sales/presentation/sales_list_screen.dart`
+  - `lib/src/features/sales/presentation/sale_detail_screen.dart`
+  - `lib/src/features/sales/presentation/log_sale_screen.dart`
+- Modify: `lib/src/routing/app_router.dart`
+
+### Steps
+
+- [ ] **Step 8.1: Sales list screen**
+
+`lib/src/features/sales/presentation/sales_list_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/widgets/empty_state.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/sale_providers.dart';
+import '../domain/payment_status.dart';
+import '../domain/sale.dart';
+import 'log_sale_screen.dart';
+import 'sale_detail_screen.dart';
+
+class SalesListScreen extends ConsumerWidget {
+  const SalesListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final salesAsync = ref.watch(salesStreamProvider(farmId));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sales')),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Iconsax.add),
+        label: const Text('Log sale'),
+        onPressed: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const LogSaleScreen()),
+        ),
+      ),
+      body: salesAsync.when(
+        data: (list) {
+          if (list.isEmpty) {
+            return const EmptyState(
+              icon: Iconsax.tag,
+              title: 'No sales logged',
+              subtitle: 'Tap "Log sale" to record your first transaction.',
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: list.length,
+            itemBuilder: (_, i) => _SaleCard(sale: list[i]),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+}
+
+class _SaleCard extends StatelessWidget {
+  const _SaleCard({required this.sale});
+  final Sale sale;
+
+  Color _statusColor(BuildContext ctx, PaymentStatus s) {
+    final scheme = Theme.of(ctx).colorScheme;
+    switch (s) {
+      case PaymentStatus.paid: return scheme.primary;
+      case PaymentStatus.partial: return scheme.tertiary;
+      case PaymentStatus.unpaid: return scheme.error;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: ListTile(
+        title: Text(sale.buyerName, style: theme.textTheme.titleMedium),
+        subtitle: Text(
+          '${DateFormat.yMMMd().format(sale.saleDate.toDate())} · '
+          '${sale.totalHeads} ${sale.totalHeads == 1 ? "head" : "heads"} · '
+          '${sale.totalWeightKg.toStringAsFixed(1)} kg',
+        ),
+        trailing: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('₱${sale.totalRevenuePhp.toStringAsFixed(0)}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                )),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: _statusColor(context, sale.paymentStatus),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(sale.paymentStatus.label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: Colors.white, fontWeight: FontWeight.w700,
+                  )),
+            ),
+          ],
+        ),
+        onTap: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => SaleDetailScreen(saleId: sale.id)),
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 8.2: Sale detail screen**
+
+`lib/src/features/sales/presentation/sale_detail_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/widgets/section_header.dart';
+import '../../farms/application/farm_providers.dart';
+import '../application/sale_providers.dart';
+
+class SaleDetailScreen extends ConsumerWidget {
+  const SaleDetailScreen({super.key, required this.saleId});
+  final String saleId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final saleAsync = ref.watch(saleByIdProvider((farmId: farmId, saleId: saleId)));
+    final linesAsync = ref.watch(saleLineItemsProvider((farmId: farmId, saleId: saleId)));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sale')),
+      body: saleAsync.when(
+        data: (sale) {
+          if (sale == null) return const Center(child: Text('Sale not found'));
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(sale.buyerName, style: theme.textTheme.headlineSmall),
+                      if (sale.buyerContact != null)
+                        Text(sale.buyerContact!, style: theme.textTheme.bodyMedium),
+                      const Divider(height: 24),
+                      Row(children: [
+                        const Icon(Iconsax.calendar, size: 16),
+                        const SizedBox(width: 8),
+                        Text(DateFormat.yMMMd().format(sale.saleDate.toDate())),
+                      ]),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        const Icon(Iconsax.money_4, size: 16),
+                        const SizedBox(width: 8),
+                        Text('${sale.paymentMethod.label} · ${sale.paymentStatus.label}'),
+                      ]),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        Text('Total', style: theme.textTheme.bodyMedium),
+                        const Spacer(),
+                        Text('₱${sale.totalRevenuePhp.toStringAsFixed(0)}',
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            )),
+                      ]),
+                      Row(children: [
+                        Text('${sale.totalHeads} heads · ${sale.totalWeightKg.toStringAsFixed(1)} kg',
+                            style: theme.textTheme.bodyMedium),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+              const SectionHeader(title: 'LINE ITEMS'),
+              linesAsync.when(
+                data: (lines) => Column(
+                  children: lines.map((l) => Card(
+                    child: ListTile(
+                      title: Text(l.pigTagId, style: theme.textTheme.titleMedium),
+                      subtitle: Text('${l.finalWeightKg.toStringAsFixed(1)} kg · ₱${l.pricePerKgPhp.toStringAsFixed(0)}/kg'),
+                      trailing: Text('₱${l.lineRevenuePhp.toStringAsFixed(0)}',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          )),
+                    ),
+                  )).toList(),
+                ),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('$e'),
+              ),
+              if (sale.notes != null) ...[
+                const SectionHeader(title: 'NOTES'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(sale.notes!),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 8.3: Log sale screen (the big one)**
+
+`lib/src/features/sales/presentation/log_sale_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+
+import '../../../core/widgets/adaptive_date_picker.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../pigs/application/pig_providers.dart';
+import '../../pigs/domain/pig.dart';
+import '../application/sale_providers.dart';
+import '../data/sale_repository.dart';
+import '../domain/payment_method.dart';
+import '../domain/payment_status.dart';
+
+class _PigRow {
+  _PigRow({required this.pig, required this.weight, required this.pricePerKg});
+  final Pig pig;
+  final TextEditingController weight;
+  final TextEditingController pricePerKg;
+  void dispose() { weight.dispose(); pricePerKg.dispose(); }
+  double get lineRevenue {
+    final w = double.tryParse(weight.text.trim()) ?? 0;
+    final p = double.tryParse(pricePerKg.text.trim()) ?? 0;
+    return w * p;
+  }
+}
+
+class LogSaleScreen extends ConsumerStatefulWidget {
+  const LogSaleScreen({super.key});
+  @override
+  ConsumerState<LogSaleScreen> createState() => _State();
+}
+
+class _State extends ConsumerState<LogSaleScreen> {
+  final _buyer = TextEditingController();
+  final _contact = TextEditingController();
+  final _notes = TextEditingController();
+  final _amountPaid = TextEditingController();
+  DateTime _date = DateTime.now();
+  PaymentMethod _method = PaymentMethod.cash;
+  PaymentStatus _status = PaymentStatus.paid;
+  final List<_PigRow> _rows = [];
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _buyer.dispose();
+    _contact.dispose();
+    _notes.dispose();
+    _amountPaid.dispose();
+    for (final r in _rows) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  double get _totalRevenue => _rows.fold(0.0, (s, r) => s + r.lineRevenue);
+  double get _totalWeight => _rows.fold(0.0, (s, r) =>
+      s + (double.tryParse(r.weight.text.trim()) ?? 0));
+
+  Future<void> _addPigs() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    if (farmId == null) return;
+    final allPigs = ref.read(pigsStreamProvider(farmId)).asData?.value ?? const <Pig>[];
+    final selectableIds = allPigs
+        .where((p) => p.status == PigStatus.active &&
+                     (p.stage == PigStage.grower || p.stage == PigStage.finisher))
+        .map((p) => p.id)
+        .toSet();
+    final addedIds = _rows.map((r) => r.pig.id).toSet();
+    final pool = allPigs.where((p) =>
+        selectableIds.contains(p.id) && !addedIds.contains(p.id)).toList();
+    if (pool.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No more eligible pigs to add.')),
+      );
+      return;
+    }
+    final picked = await showModalBottomSheet<List<Pig>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _PigPicker(pool: pool),
+    );
+    if (picked == null || picked.isEmpty) return;
+    final defaultPrice = _rows.isNotEmpty
+        ? _rows.first.pricePerKg.text
+        : '';
+    setState(() {
+      for (final p in picked) {
+        _rows.add(_PigRow(
+          pig: p,
+          weight: TextEditingController(text: p.currentWeight?.toStringAsFixed(1) ?? ''),
+          pricePerKg: TextEditingController(text: defaultPrice),
+        ));
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final farmId = ref.read(selectedFarmIdProvider);
+    final user = ref.read(authStateChangesProvider).asData?.value;
+    if (farmId == null || user == null) return;
+    if (_buyer.text.trim().isEmpty) { _snack('Buyer is required.'); return; }
+    if (_rows.isEmpty) { _snack('Add at least one pig.'); return; }
+    final inputs = <SaleLineItemInput>[];
+    for (var i = 0; i < _rows.length; i++) {
+      final r = _rows[i];
+      final w = double.tryParse(r.weight.text.trim());
+      final p = double.tryParse(r.pricePerKg.text.trim());
+      if (w == null || w <= 0) { _snack('Pig ${r.pig.tagId}: weight must be positive.'); return; }
+      if (p == null || p <= 0) { _snack('Pig ${r.pig.tagId}: price/kg must be positive.'); return; }
+      inputs.add(SaleLineItemInput(
+        pigId: r.pig.id, pigTagId: r.pig.tagId,
+        finalWeightKg: w, pricePerKgPhp: p,
+      ));
+    }
+    double? paid;
+    if (_status == PaymentStatus.partial) {
+      paid = double.tryParse(_amountPaid.text.trim());
+      if (paid == null || paid <= 0 || paid >= _totalRevenue) {
+        _snack('Partial-payment amount must be > 0 and < total.');
+        return;
+      }
+    }
+    setState(() => _busy = true);
+    final actorName = ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    try {
+      await ref.read(saleRepositoryProvider).logSale(
+        farmId: farmId,
+        buyerName: _buyer.text,
+        buyerContact: _contact.text.trim().isEmpty ? null : _contact.text.trim(),
+        saleDate: Timestamp.fromDate(_date),
+        paymentMethod: _method,
+        paymentStatus: _status,
+        amountPaidPhp: paid,
+        lineItems: inputs,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        actorUserId: user.uid,
+        actorDisplayName: actorName,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      _snack(e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _snack(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Log sale')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeader(title: 'BUYER', padding: EdgeInsets.only(bottom: 8)),
+            TextField(controller: _buyer,
+                decoration: const InputDecoration(hintText: 'Buyer name')),
+            const SizedBox(height: 12),
+            TextField(controller: _contact,
+                decoration: const InputDecoration(hintText: 'Contact (optional)')),
+            const SectionHeader(title: 'DATE'),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}'),
+              trailing: const Icon(Iconsax.calendar),
+              onTap: () async {
+                final picked = await AdaptiveDatePicker.show(
+                  context: context, initial: _date,
+                  firstDate: DateTime(2020), lastDate: DateTime.now(),
+                );
+                if (picked != null) setState(() => _date = picked);
+              },
+            ),
+            const SectionHeader(title: 'PIGS IN SALE'),
+            ..._rows.asMap().entries.map((entry) {
+              final i = entry.key;
+              final r = entry.value;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      Row(children: [
+                        Text(r.pig.tagId, style: theme.textTheme.titleMedium),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Iconsax.trash),
+                          onPressed: () => setState(() {
+                            _rows.removeAt(i).dispose();
+                          }),
+                        ),
+                      ]),
+                      Row(children: [
+                        Expanded(
+                          child: TextField(
+                            controller: r.weight,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Weight kg'),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: r.pricePerKg,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: '₱/kg'),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('Line: ₱${r.lineRevenue.toStringAsFixed(0)}',
+                            style: theme.textTheme.labelLarge),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            OutlinedButton.icon(
+              icon: const Icon(Iconsax.add),
+              label: const Text('Add pigs'),
+              onPressed: _addPigs,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Row(children: [
+                    Text('${_rows.length} heads · ${_totalWeight.toStringAsFixed(1)} kg',
+                        style: theme.textTheme.bodyMedium),
+                    const Spacer(),
+                  ]),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Text('Total revenue', style: theme.textTheme.titleMedium),
+                    const Spacer(),
+                    Text('₱${_totalRevenue.toStringAsFixed(0)}',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )),
+                  ]),
+                ],
+              ),
+            ),
+            const SectionHeader(title: 'PAYMENT'),
+            SegmentedButton<PaymentMethod>(
+              segments: PaymentMethod.values.map((m) =>
+                  ButtonSegment(value: m, label: Text(m.label))).toList(),
+              selected: {_method},
+              onSelectionChanged: (s) => setState(() => _method = s.first),
+            ),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, children: PaymentStatus.values.map((s) =>
+              ChoiceChip(
+                label: Text(s.label),
+                selected: _status == s,
+                onSelected: (_) => setState(() => _status = s),
+              )).toList()),
+            if (_status == PaymentStatus.partial) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountPaid,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Amount paid (₱)',
+                ),
+              ),
+            ],
+            const SectionHeader(title: 'NOTES'),
+            TextField(controller: _notes, maxLines: 3),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _busy ? null : _save,
+              child: _busy
+                  ? const SizedBox(
+                      height: 24, width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5))
+                  : const Text('Save sale'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PigPicker extends StatefulWidget {
+  const _PigPicker({required this.pool});
+  final List<Pig> pool;
+  @override
+  State<_PigPicker> createState() => _PigPickerState();
+}
+
+class _PigPickerState extends State<_PigPicker> {
+  final Set<String> _selected = {};
+  String _search = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _search.trim().isEmpty
+        ? widget.pool
+        : widget.pool.where((p) =>
+            p.tagId.toLowerCase().contains(_search.trim().toLowerCase())).toList();
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      builder: (_, scroll) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(children: [
+              Text('Pick pigs', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              TextButton(
+                onPressed: _selected.isEmpty ? null : () {
+                  Navigator.of(context).pop(
+                    widget.pool.where((p) => _selected.contains(p.id)).toList(),
+                  );
+                },
+                child: Text('Add (${_selected.length})'),
+              ),
+            ]),
+            TextField(
+              decoration: const InputDecoration(hintText: 'Search by tag ID'),
+              onChanged: (v) => setState(() => _search = v),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                controller: scroll,
+                itemCount: filtered.length,
+                itemBuilder: (_, i) {
+                  final p = filtered[i];
+                  return CheckboxListTile(
+                    title: Text(p.tagId),
+                    subtitle: Text('${p.stage.label} · ${p.currentWeight?.toStringAsFixed(1) ?? "—"} kg'),
+                    value: _selected.contains(p.id),
+                    onChanged: (v) => setState(() {
+                      v == true ? _selected.add(p.id) : _selected.remove(p.id);
+                    }),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 8.4: Wire routes + commit**
+
+In `app_router.dart`:
+
+```dart
+GoRoute(path: '/sales', builder: (c, s) => const SalesListScreen()),
+```
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(sales): list, detail, and log-sale screens
+
+- Multi-select pig picker bottom sheet filtered to active grower/finisher
+- 'Apply first price to all' UX via default-fill from first row
+- Live totals (heads / weight / revenue) update with each edit
+- Sale detail with per-pig line item cards"
+```
+
+---
+
+## Task 9: Pig Detail integration — Sold banner + sale link
+
+**Goal:** When a pig is sold, its detail screen surfaces a "Sold" banner with the date and a link to the parent sale.
+
+**Files:**
+- Modify: `lib/src/features/pigs/presentation/pig_detail_screen.dart`
+
+### Steps
+
+- [ ] **Step 9.1: Find the parent sale for a sold pig**
+
+This requires a collection-group query on `line_items` filtered by `pigId`. Add a method to `SaleRepository`:
+
+In `lib/src/features/sales/data/sale_repository.dart`, append:
+
+```dart
+/// Finds the sale that contains this pig as a line item.
+/// Uses a collection-group query on line_items. Returns null if not found.
+Future<Sale?> findSaleForPig({
+  required String farmId, required String pigId,
+}) async {
+  final snap = await _firestore.collectionGroup('line_items')
+      .where('pigId', isEqualTo: pigId)
+      .limit(1)
+      .get();
+  for (final doc in snap.docs) {
+    final saleRef = doc.reference.parent.parent;
+    if (saleRef == null) continue;
+    // Verify it's in the right farm.
+    final parts = saleRef.path.split('/');
+    if (parts[0] != 'farms' || parts[1] != farmId) continue;
+    final saleSnap = await saleRef.get();
+    if (saleSnap.exists) return Sale.fromFirestore(saleSnap, farmId: farmId);
+  }
+  return null;
+}
+```
+
+Add a FutureProvider in `sale_providers.dart`:
+
+```dart
+final saleForPigProvider =
+    FutureProvider.family<Sale?, ({String farmId, String pigId})>((ref, args) {
+  return ref.read(saleRepositoryProvider).findSaleForPig(
+        farmId: args.farmId, pigId: args.pigId);
+});
+```
+
+- [ ] **Step 9.2: Modify Pig Detail Profile tab**
+
+In `lib/src/features/pigs/presentation/pig_detail_screen.dart`, find the `_ProfileTab` widget. At the top of its `ListView.children`, add a `_SoldBanner` widget that renders when `pig.status == PigStatus.sold`:
+
+```dart
+// Add at top of file:
+import 'package:intl/intl.dart';
+import '../../sales/application/sale_providers.dart';
+import '../../sales/presentation/sale_detail_screen.dart';
+
+// Inside _ProfileTab ListView children, prepend:
+if (pig.status == PigStatus.sold)
+  _SoldBanner(pig: pig),
+```
+
+Add the widget:
+
+```dart
+class _SoldBanner extends ConsumerWidget {
+  const _SoldBanner({required this.pig});
+  final Pig pig;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final saleAsync = ref.watch(saleForPigProvider(
+      (farmId: pig.farmId, pigId: pig.id),
+    ));
+    return Card(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ListTile(
+        leading: Icon(Iconsax.tag, color: theme.colorScheme.primary),
+        title: Text('Sold', style: theme.textTheme.titleMedium),
+        subtitle: saleAsync.when(
+          data: (sale) => sale == null
+              ? const Text('— no sale record found —')
+              : Text('${DateFormat.yMMMd().format(sale.saleDate.toDate())} · ${sale.buyerName}'),
+          loading: () => const Text('Loading sale details…'),
+          error: (e, _) => Text('$e'),
+        ),
+        trailing: saleAsync.maybeWhen(
+          data: (sale) => sale == null ? null : const Icon(Iconsax.arrow_right_3),
+          orElse: () => null,
+        ),
+        onTap: () {
+          final sale = saleAsync.asData?.value;
+          if (sale != null) {
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => SaleDetailScreen(saleId: sale.id),
+            ));
+          }
+        },
+      ),
+    );
+  }
+}
+```
+
+Also: don't show the "Mark deceased" button when `pig.status == PigStatus.sold`. The existing code shows it for `active` status only — verify the check is `if (pig.status == PigStatus.active)`. If it currently says `!= deceased`, change it.
+
+Imports needed at top of file (add if missing):
+```dart
+import 'package:iconsax/iconsax.dart';
+```
+
+- [ ] **Step 9.3: Run + commit**
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(pigs,sales): Sold banner on Pig Detail Profile linking to sale
+
+- SaleRepository.findSaleForPig via line_items collection-group query
+- Sold pigs show a banner with sale date + buyer + tap-to-open"
+```
+
+---
+
+## Task 10: BatchCostCalculator + ProfitabilityCalculator (pure functions with full tests)
+
+**Goal:** Build the core math layer for profitability. Pure functions that take collections of records and produce P&L numbers. Fully unit-tested.
+
+**Files:**
+- Create:
+  - `lib/src/features/profitability/application/batch_cost_calculator.dart`
+  - `lib/src/features/profitability/application/profitability_calculator.dart`
+  - `lib/src/features/profitability/application/profitability_providers.dart`
+  - `test/features/profitability/application/batch_cost_calculator_test.dart`
+  - `test/features/profitability/application/profitability_calculator_test.dart`
+
+### Steps
+
+- [ ] **Step 10.1: BatchCostCalculator**
+
+`lib/src/features/profitability/application/batch_cost_calculator.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../expenses/domain/expense.dart';
+import '../../expenses/domain/expense_category.dart';
+import '../../inventory/domain/supply.dart';
+import '../../inventory/domain/supply_category.dart';
+import '../../inventory/domain/supply_movement.dart';
+import '../../pigs/domain/health_record.dart';
+
+class BatchCostBreakdown {
+  final double feedCostPhp;
+  final double medicineCostPhp;
+  final double laborCostPhp;
+  final double utilitiesCostPhp;
+  final double equipmentCostPhp;
+  final double maintenanceCostPhp;
+  final double otherCostPhp;
+  final double totalCostPhp;
+  const BatchCostBreakdown({
+    required this.feedCostPhp,
+    required this.medicineCostPhp,
+    required this.laborCostPhp,
+    required this.utilitiesCostPhp,
+    required this.equipmentCostPhp,
+    required this.maintenanceCostPhp,
+    required this.otherCostPhp,
+    required this.totalCostPhp,
+  });
+  static const empty = BatchCostBreakdown(
+    feedCostPhp: 0, medicineCostPhp: 0, laborCostPhp: 0,
+    utilitiesCostPhp: 0, equipmentCostPhp: 0, maintenanceCostPhp: 0,
+    otherCostPhp: 0, totalCostPhp: 0,
+  );
+}
+
+class BatchCostCalculator {
+  BatchCostCalculator._();
+
+  /// Aggregates costs attributed to a given batch from:
+  ///   1. Supply consumption × supply.weightedAvgUnitCostPhp at time of movement
+  ///   2. Health records.costPhp for pigs in the batch (with double-count guard via
+  ///      relatedHealthRecordId on supply movements — see ProfitabilityCalculator.medicineCost docs)
+  ///   3. Direct expenses tagged relatedBatchId
+  static BatchCostBreakdown forBatch({
+    required String batchId,
+    required List<SupplyMovement> movements,
+    required Map<String, Supply> suppliesById,
+    required List<HealthRecord> healthRecords,
+    required Set<String> batchMemberPigIds,
+    required List<Expense> expenses,
+  }) {
+    // Movements consumed into this batch.
+    double feedCost = 0;
+    double medicineCost = 0;
+    final consumedHealthRecordIds = <String>{};
+    for (final m in movements) {
+      if (m.relatedBatchId != batchId) continue;
+      if (m.type != MovementType.consumption) continue;
+      final supply = suppliesById[m.supplyId];
+      if (supply == null) continue;
+      final qty = m.quantity.abs(); // consumption is negative
+      final cost = qty * supply.weightedAvgUnitCostPhp;
+      switch (supply.category) {
+        case SupplyCategory.feed:
+          feedCost += cost;
+          break;
+        case SupplyCategory.medicine:
+          medicineCost += cost;
+          if (m.relatedHealthRecordId != null) {
+            consumedHealthRecordIds.add(m.relatedHealthRecordId!);
+          }
+          break;
+        case SupplyCategory.otherInput:
+          // Fall into "other"
+          break;
+      }
+    }
+
+    // Health records for pigs in the batch — add cost only if NOT already counted via movement.
+    for (final h in healthRecords) {
+      if (!batchMemberPigIds.contains(h.pigId)) continue;
+      if (consumedHealthRecordIds.contains(h.id)) continue;
+      medicineCost += h.costPhp ?? 0;
+    }
+
+    // Direct expenses tagged with relatedBatchId.
+    double laborCost = 0;
+    double utilitiesCost = 0;
+    double equipmentCost = 0;
+    double maintenanceCost = 0;
+    double otherCost = 0;
+    for (final e in expenses) {
+      if (e.relatedBatchId != batchId) continue;
+      switch (e.category) {
+        case ExpenseCategory.feed:
+          feedCost += e.amountPhp;
+          break;
+        case ExpenseCategory.medicine:
+          medicineCost += e.amountPhp;
+          break;
+        case ExpenseCategory.labor:
+          laborCost += e.amountPhp;
+          break;
+        case ExpenseCategory.utilities:
+          utilitiesCost += e.amountPhp;
+          break;
+        case ExpenseCategory.equipment:
+          equipmentCost += e.amountPhp;
+          break;
+        case ExpenseCategory.maintenance:
+          maintenanceCost += e.amountPhp;
+          break;
+        case ExpenseCategory.other:
+          otherCost += e.amountPhp;
+          break;
+      }
+    }
+    final total = feedCost + medicineCost + laborCost + utilitiesCost +
+        equipmentCost + maintenanceCost + otherCost;
+    return BatchCostBreakdown(
+      feedCostPhp: feedCost,
+      medicineCostPhp: medicineCost,
+      laborCostPhp: laborCost,
+      utilitiesCostPhp: utilitiesCost,
+      equipmentCostPhp: equipmentCost,
+      maintenanceCostPhp: maintenanceCost,
+      otherCostPhp: otherCost,
+      totalCostPhp: total,
+    );
+  }
+}
+```
+
+- [ ] **Step 10.2: ProfitabilityCalculator**
+
+`lib/src/features/profitability/application/profitability_calculator.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../expenses/domain/expense.dart';
+import '../../expenses/domain/expense_category.dart';
+import '../../inventory/domain/supply.dart';
+import '../../inventory/domain/supply_category.dart';
+import '../../inventory/domain/supply_movement.dart';
+import '../../pigs/domain/health_record.dart';
+import '../../sales/domain/sale.dart';
+import 'batch_cost_calculator.dart';
+
+class ProfitabilityBreakdown {
+  final double revenuePhp;
+  final double feedCostPhp;
+  final double medicineCostPhp;
+  final double laborCostPhp;
+  final double utilitiesCostPhp;
+  final double equipmentCostPhp;
+  final double maintenanceCostPhp;
+  final double otherCostPhp;
+  final double totalCostPhp;
+  final double grossProfitPhp;
+  final double marginPct;
+  const ProfitabilityBreakdown({
+    required this.revenuePhp,
+    required this.feedCostPhp,
+    required this.medicineCostPhp,
+    required this.laborCostPhp,
+    required this.utilitiesCostPhp,
+    required this.equipmentCostPhp,
+    required this.maintenanceCostPhp,
+    required this.otherCostPhp,
+    required this.totalCostPhp,
+    required this.grossProfitPhp,
+    required this.marginPct,
+  });
+  static const empty = ProfitabilityBreakdown(
+    revenuePhp: 0, feedCostPhp: 0, medicineCostPhp: 0,
+    laborCostPhp: 0, utilitiesCostPhp: 0, equipmentCostPhp: 0,
+    maintenanceCostPhp: 0, otherCostPhp: 0,
+    totalCostPhp: 0, grossProfitPhp: 0, marginPct: 0,
+  );
+}
+
+class ProfitabilityCalculator {
+  ProfitabilityCalculator._();
+
+  /// Period P&L:
+  ///   Revenue: sum of sales.totalRevenuePhp where saleDate in [start, end)
+  ///   Feed: consumption × supply.avg + ExpenseCategory.feed
+  ///   Medicine: consumption × supply.avg + health_records.costPhp where no movement
+  ///            references the health record + ExpenseCategory.medicine
+  ///   Others: each expense category direct.
+  static ProfitabilityBreakdown forPeriod({
+    required Timestamp start,
+    required Timestamp end,
+    required List<Sale> sales,
+    required List<SupplyMovement> movements,
+    required Map<String, Supply> suppliesById,
+    required List<HealthRecord> healthRecords,
+    required List<Expense> expenses,
+  }) {
+    // Revenue.
+    final revenue = sales
+        .where((s) => !s.saleDate.toDate().isBefore(start.toDate()) &&
+                       s.saleDate.toDate().isBefore(end.toDate()))
+        .fold<double>(0, (sum, s) => sum + s.totalRevenuePhp);
+
+    // Costs from supply consumption in range.
+    double feedCost = 0;
+    double medicineCost = 0;
+    final consumedHealthRecordIds = <String>{};
+    for (final m in movements) {
+      final t = m.createdAt.toDate();
+      if (t.isBefore(start.toDate()) || !t.isBefore(end.toDate())) continue;
+      if (m.type != MovementType.consumption) continue;
+      final supply = suppliesById[m.supplyId];
+      if (supply == null) continue;
+      final qty = m.quantity.abs();
+      final cost = qty * supply.weightedAvgUnitCostPhp;
+      switch (supply.category) {
+        case SupplyCategory.feed: feedCost += cost; break;
+        case SupplyCategory.medicine:
+          medicineCost += cost;
+          if (m.relatedHealthRecordId != null) {
+            consumedHealthRecordIds.add(m.relatedHealthRecordId!);
+          }
+          break;
+        case SupplyCategory.otherInput: break;
+      }
+    }
+
+    // Off-inventory medicine costs from health_records in range.
+    for (final h in healthRecords) {
+      final t = h.date.toDate();
+      if (t.isBefore(start.toDate()) || !t.isBefore(end.toDate())) continue;
+      if (consumedHealthRecordIds.contains(h.id)) continue;
+      medicineCost += h.costPhp ?? 0;
+    }
+
+    // Direct expenses in range, by category.
+    double laborCost = 0;
+    double utilitiesCost = 0;
+    double equipmentCost = 0;
+    double maintenanceCost = 0;
+    double otherCost = 0;
+    for (final e in expenses) {
+      final t = e.date.toDate();
+      if (t.isBefore(start.toDate()) || !t.isBefore(end.toDate())) continue;
+      switch (e.category) {
+        case ExpenseCategory.feed: feedCost += e.amountPhp; break;
+        case ExpenseCategory.medicine: medicineCost += e.amountPhp; break;
+        case ExpenseCategory.labor: laborCost += e.amountPhp; break;
+        case ExpenseCategory.utilities: utilitiesCost += e.amountPhp; break;
+        case ExpenseCategory.equipment: equipmentCost += e.amountPhp; break;
+        case ExpenseCategory.maintenance: maintenanceCost += e.amountPhp; break;
+        case ExpenseCategory.other: otherCost += e.amountPhp; break;
+      }
+    }
+    final total = feedCost + medicineCost + laborCost + utilitiesCost +
+        equipmentCost + maintenanceCost + otherCost;
+    final profit = revenue - total;
+    final margin = revenue == 0 ? 0.0 : (profit / revenue) * 100;
+    return ProfitabilityBreakdown(
+      revenuePhp: revenue,
+      feedCostPhp: feedCost,
+      medicineCostPhp: medicineCost,
+      laborCostPhp: laborCost,
+      utilitiesCostPhp: utilitiesCost,
+      equipmentCostPhp: equipmentCost,
+      maintenanceCostPhp: maintenanceCost,
+      otherCostPhp: otherCost,
+      totalCostPhp: total,
+      grossProfitPhp: profit,
+      marginPct: margin,
+    );
+  }
+
+  /// Per-batch P&L. `batchMemberPigIds` is the set of pigs that belong to the
+  /// batch (current OR historic — typically derive from `batch.pigIds` plus
+  /// any sold/culled/deceased pigs that were members during their lifetime).
+  /// Revenue is the sum of sale line items for those pig IDs.
+  static ProfitabilityBreakdown forBatch({
+    required String batchId,
+    required Set<String> batchMemberPigIds,
+    required List<Sale> sales,
+    required Map<String, List<({String pigId, double lineRevenuePhp})>> lineItemsBySale,
+    required List<SupplyMovement> movements,
+    required Map<String, Supply> suppliesById,
+    required List<HealthRecord> healthRecords,
+    required List<Expense> expenses,
+  }) {
+    // Revenue: sum of all line items whose pigId is in batchMemberPigIds.
+    double revenue = 0;
+    for (final entry in lineItemsBySale.entries) {
+      for (final li in entry.value) {
+        if (batchMemberPigIds.contains(li.pigId)) {
+          revenue += li.lineRevenuePhp;
+        }
+      }
+    }
+    final cost = BatchCostCalculator.forBatch(
+      batchId: batchId, movements: movements, suppliesById: suppliesById,
+      healthRecords: healthRecords, batchMemberPigIds: batchMemberPigIds,
+      expenses: expenses,
+    );
+    final profit = revenue - cost.totalCostPhp;
+    final margin = revenue == 0 ? 0.0 : (profit / revenue) * 100;
+    return ProfitabilityBreakdown(
+      revenuePhp: revenue,
+      feedCostPhp: cost.feedCostPhp,
+      medicineCostPhp: cost.medicineCostPhp,
+      laborCostPhp: cost.laborCostPhp,
+      utilitiesCostPhp: cost.utilitiesCostPhp,
+      equipmentCostPhp: cost.equipmentCostPhp,
+      maintenanceCostPhp: cost.maintenanceCostPhp,
+      otherCostPhp: cost.otherCostPhp,
+      totalCostPhp: cost.totalCostPhp,
+      grossProfitPhp: profit,
+      marginPct: margin,
+    );
+  }
+}
+```
+
+- [ ] **Step 10.3: Tests**
+
+`test/features/profitability/application/batch_cost_calculator_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/expenses/domain/expense.dart';
+import 'package:farm_app/src/features/expenses/domain/expense_category.dart';
+import 'package:farm_app/src/features/inventory/domain/supply.dart';
+import 'package:farm_app/src/features/inventory/domain/supply_category.dart';
+import 'package:farm_app/src/features/inventory/domain/supply_movement.dart';
+import 'package:farm_app/src/features/pigs/domain/health_record.dart';
+import 'package:farm_app/src/features/profitability/application/batch_cost_calculator.dart';
+
+Supply _supply(String id, SupplyCategory cat, double avg) => Supply(
+  id: id, farmId: 'f', name: 'X',
+  category: cat, unit: SupplyUnit.sack,
+  unitsPerPackage: null, lowStockThreshold: null,
+  currentStock: 0, weightedAvgUnitCostPhp: avg,
+  notes: null, createdBy: 'u',
+  createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+);
+
+SupplyMovement _consumption({
+  required String supplyId, required num qty, required String batchId,
+  String? healthRecordId,
+}) => SupplyMovement(
+  id: 'm', farmId: 'f', supplyId: supplyId,
+  type: MovementType.consumption, quantity: -qty,
+  unitCostPhp: null, relatedPurchaseId: null,
+  relatedPenId: null, relatedBatchId: batchId,
+  relatedHealthRecordId: healthRecordId,
+  notes: null, createdBy: 'u', createdAt: Timestamp.now(),
+);
+
+HealthRecord _health({
+  required String id, required String pigId, double cost = 0,
+}) => HealthRecord(
+  id: id, farmId: 'f', pigId: pigId,
+  type: HealthEventType.vaccination, date: Timestamp.now(),
+  productName: null, dosage: null, route: null, diagnosis: null,
+  withdrawalEndDate: null, costPhp: cost == 0 ? null : cost,
+  photoUrls: const [], notes: null,
+  createdBy: 'u', createdAt: Timestamp.now(),
+);
+
+Expense _expense({
+  required ExpenseCategory category, required double amount, String? batchId,
+}) => Expense(
+  id: 'e', farmId: 'f',
+  category: category, description: 'X',
+  amountPhp: amount, date: Timestamp.now(),
+  relatedBatchId: batchId, relatedEquipmentId: null,
+  relatedPigId: null, relatedAreaId: null,
+  receiptPhotoUrl: null, notes: null,
+  createdBy: 'u', createdAt: Timestamp.now(),
+);
+
+void main() {
+  test('feed consumption attributed to batch', () {
+    final supplies = {'s1': _supply('s1', SupplyCategory.feed, 1650.0)};
+    final movements = [
+      _consumption(supplyId: 's1', qty: 2, batchId: 'b1'),
+      _consumption(supplyId: 's1', qty: 1, batchId: 'b2'),
+    ];
+    final r = BatchCostCalculator.forBatch(
+      batchId: 'b1',
+      movements: movements,
+      suppliesById: supplies,
+      healthRecords: const [],
+      batchMemberPigIds: const {},
+      expenses: const [],
+    );
+    expect(r.feedCostPhp, 2 * 1650);
+    expect(r.totalCostPhp, 2 * 1650);
+  });
+
+  test('medicine: health record cost included when no matching movement', () {
+    final supplies = {'s1': _supply('s1', SupplyCategory.medicine, 50.0)};
+    final movements = <SupplyMovement>[];
+    final health = [_health(id: 'h1', pigId: 'p1', cost: 200)];
+    final r = BatchCostCalculator.forBatch(
+      batchId: 'b1', movements: movements, suppliesById: supplies,
+      healthRecords: health,
+      batchMemberPigIds: {'p1'},
+      expenses: const [],
+    );
+    expect(r.medicineCostPhp, 200);
+  });
+
+  test('medicine: movement cost wins over health-record costPhp (no double-count)', () {
+    final supplies = {'s1': _supply('s1', SupplyCategory.medicine, 50.0)};
+    final movements = [
+      _consumption(supplyId: 's1', qty: 4, batchId: 'b1', healthRecordId: 'h1'),
+    ];
+    final health = [_health(id: 'h1', pigId: 'p1', cost: 200)];
+    final r = BatchCostCalculator.forBatch(
+      batchId: 'b1', movements: movements, suppliesById: supplies,
+      healthRecords: health, batchMemberPigIds: {'p1'},
+      expenses: const [],
+    );
+    // 4 × 50 = 200 from movement; health record cost is SKIPPED.
+    expect(r.medicineCostPhp, 200);
+  });
+
+  test('expenses by category attributed', () {
+    final r = BatchCostCalculator.forBatch(
+      batchId: 'b1', movements: const [], suppliesById: const {},
+      healthRecords: const [], batchMemberPigIds: const {},
+      expenses: [
+        _expense(category: ExpenseCategory.labor, amount: 5000, batchId: 'b1'),
+        _expense(category: ExpenseCategory.utilities, amount: 2000, batchId: 'b1'),
+        _expense(category: ExpenseCategory.labor, amount: 9999, batchId: 'b2'),  // wrong batch
+      ],
+    );
+    expect(r.laborCostPhp, 5000);
+    expect(r.utilitiesCostPhp, 2000);
+    expect(r.totalCostPhp, 7000);
+  });
+}
+```
+
+`test/features/profitability/application/profitability_calculator_test.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/features/inventory/domain/supply.dart';
+import 'package:farm_app/src/features/inventory/domain/supply_category.dart';
+import 'package:farm_app/src/features/inventory/domain/supply_movement.dart';
+import 'package:farm_app/src/features/profitability/application/profitability_calculator.dart';
+import 'package:farm_app/src/features/sales/domain/payment_method.dart';
+import 'package:farm_app/src/features/sales/domain/payment_status.dart';
+import 'package:farm_app/src/features/sales/domain/sale.dart';
+
+Sale _sale({required DateTime date, required double revenue}) => Sale(
+  id: 's', farmId: 'f', buyerName: 'X',
+  buyerContact: null, saleDate: Timestamp.fromDate(date),
+  totalHeads: 1, totalWeightKg: 90,
+  totalRevenuePhp: revenue,
+  paymentMethod: PaymentMethod.cash, paymentStatus: PaymentStatus.paid,
+  amountPaidPhp: null, notes: null,
+  createdBy: 'u', createdAt: Timestamp.now(),
+);
+
+Supply _supply(String id, SupplyCategory cat, double avg) => Supply(
+  id: id, farmId: 'f', name: 'X',
+  category: cat, unit: SupplyUnit.sack,
+  unitsPerPackage: null, lowStockThreshold: null,
+  currentStock: 0, weightedAvgUnitCostPhp: avg,
+  notes: null, createdBy: 'u',
+  createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+);
+
+SupplyMovement _consumption({
+  required String supplyId, required num qty, required DateTime at,
+}) => SupplyMovement(
+  id: 'm', farmId: 'f', supplyId: supplyId,
+  type: MovementType.consumption, quantity: -qty,
+  unitCostPhp: null, relatedPurchaseId: null,
+  relatedPenId: null, relatedBatchId: null, relatedHealthRecordId: null,
+  notes: null, createdBy: 'u', createdAt: Timestamp.fromDate(at),
+);
+
+void main() {
+  test('period P&L sums revenue and feed cost in range', () {
+    final start = DateTime(2026, 5, 1);
+    final end = DateTime(2026, 6, 1);
+    final r = ProfitabilityCalculator.forPeriod(
+      start: Timestamp.fromDate(start), end: Timestamp.fromDate(end),
+      sales: [
+        _sale(date: DateTime(2026, 5, 10), revenue: 50000),
+        _sale(date: DateTime(2026, 5, 20), revenue: 25000),
+        _sale(date: DateTime(2026, 4, 15), revenue: 999999),  // before period
+      ],
+      movements: [
+        _consumption(supplyId: 's1', qty: 5, at: DateTime(2026, 5, 12)),
+      ],
+      suppliesById: {'s1': _supply('s1', SupplyCategory.feed, 1650.0)},
+      healthRecords: const [], expenses: const [],
+    );
+    expect(r.revenuePhp, 75000);
+    expect(r.feedCostPhp, 5 * 1650);
+    expect(r.totalCostPhp, 5 * 1650);
+    expect(r.grossProfitPhp, 75000 - 5 * 1650);
+    expect(r.marginPct, closeTo((75000 - 5 * 1650) / 75000 * 100, 0.01));
+  });
+
+  test('zero revenue yields 0 margin (not NaN)', () {
+    final r = ProfitabilityCalculator.forPeriod(
+      start: Timestamp.fromDate(DateTime(2026, 1, 1)),
+      end: Timestamp.fromDate(DateTime(2026, 12, 31)),
+      sales: const [],
+      movements: const [], suppliesById: const {},
+      healthRecords: const [], expenses: const [],
+    );
+    expect(r.marginPct, 0);
+    expect(r.grossProfitPhp, 0);
+  });
+}
+```
+
+- [ ] **Step 10.4: Providers + commit**
+
+`lib/src/features/profitability/application/profitability_providers.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../expenses/application/expense_providers.dart';
+import '../../inventory/application/inventory_providers.dart';
+import '../../inventory/data/movement_repository.dart';
+import '../../inventory/domain/supply.dart';
+import '../../inventory/domain/supply_movement.dart';
+import '../../pigs/application/pig_providers.dart';
+import '../../pigs/domain/health_record.dart';
+import '../../sales/application/sale_providers.dart';
+import '../../yield/yield_metrics.dart';
+import '../../yield/yield_providers.dart';
+import 'profitability_calculator.dart';
+
+/// Period P&L using the same period selector as YieldReports.
+final profitabilityForPeriodProvider =
+    Provider.family<ProfitabilityBreakdown, String>((ref, farmId) {
+  final period = ref.watch(selectedPeriodProvider);
+  final now = DateTime.now();
+  final start = Timestamp.fromDate(period.startFrom(now));
+  final end = Timestamp.fromDate(now.add(const Duration(days: 1)));
+  final sales = ref.watch(salesStreamProvider(farmId)).asData?.value ?? const [];
+  final movements = ref.watch(_allMovementsProvider(farmId)).asData?.value ?? const <SupplyMovement>[];
+  final supplies = ref.watch(suppliesStreamProvider(farmId)).asData?.value ?? const <Supply>[];
+  final suppliesById = {for (final s in supplies) s.id: s};
+  final healthRecords = ref.watch(_allHealthRecordsProvider(farmId)).asData?.value ?? const <HealthRecord>[];
+  final expenses = ref.watch(expensesStreamProvider(farmId)).asData?.value ?? const [];
+  return ProfitabilityCalculator.forPeriod(
+    start: start, end: end, sales: sales, movements: movements,
+    suppliesById: suppliesById, healthRecords: healthRecords, expenses: expenses,
+  );
+});
+
+/// Helper: streams all movements for the farm (regardless of date) — calculator filters.
+final _allMovementsProvider = StreamProvider.family<List<SupplyMovement>, String>((ref, farmId) {
+  // Cheap workaround: get last 90d range; profitability calculator filters by exact range.
+  // For correctness over longer periods (YTD/all), this provider should stream the entire collection.
+  return ref.watch(movementRepositoryProvider).streamInRange(
+        farmId: farmId,
+        start: Timestamp.fromMillisecondsSinceEpoch(0),
+        end: Timestamp.fromDate(DateTime.now().add(const Duration(days: 1))),
+      );
+});
+
+/// Helper: streams all health records via collection-group filtered to farm.
+final _allHealthRecordsProvider = StreamProvider.family<List<HealthRecord>, String>((ref, farmId) {
+  return ref.watch(firestoreProvider)
+      .collectionGroup('health_records')
+      .snapshots()
+      .map((s) {
+    return s.docs.where((d) {
+      final parts = d.reference.path.split('/');
+      return parts[0] == 'farms' && parts[1] == farmId;
+    }).map((d) {
+      final pigId = d.reference.parent.parent!.id;
+      return HealthRecord.fromFirestore(d, farmId: farmId, pigId: pigId);
+    }).toList();
+  });
+});
+```
+
+(Note: `firestoreProvider` is imported from `activity_providers.dart` — same pattern as other providers in this codebase.)
+
+Run tests, commit:
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(profitability): BatchCostCalculator + ProfitabilityCalculator pure functions
+
+- Period P&L with revenue, feed/medicine/labor/utilities/equipment/
+  maintenance/other cost breakdown
+- Medicine double-count guard via relatedHealthRecordId
+- Per-batch P&L with member-pig revenue attribution
+- Full unit tests covering empty/zero/multi-category cases"
+```
+
+---
+
+## Task 11: Yield Reports extension + Batches list + Batch profitability detail
+
+**Goal:** Extend the existing Yield Reports screen with the new Profitability card. Add a Batches list screen accessible from there, and a per-batch profitability detail screen.
+
+**Files:**
+- Modify: `lib/src/features/yield/yield_screen.dart`
+- Create:
+  - `lib/src/features/profitability/presentation/batches_list_screen.dart`
+  - `lib/src/features/profitability/presentation/batch_profitability_screen.dart`
+- Modify: `lib/src/routing/app_router.dart`
+
+### Steps
+
+- [ ] **Step 11.1: Add Profitability card to Yield Reports**
+
+In `lib/src/features/yield/yield_screen.dart`, locate the ListView with the existing 4 metric cards. Append a new card and a "Batches" link button.
+
+Inside the existing `ListView`'s children, after the Output card:
+
+```dart
+// Add at top of file:
+import '../../profitability/application/profitability_providers.dart';
+import '../../profitability/presentation/batches_list_screen.dart';
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/permissions/role.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../team/application/team_providers.dart';
+
+// Inside Build, gate by role:
+final user = ref.watch(authStateChangesProvider).asData?.value;
+final role = (farmId != null && user != null)
+    ? (ref.watch(memberForUserProvider(
+        (farmId: farmId, userId: user.uid),
+      )).asData?.value?.role ?? Role.worker)
+    : Role.worker;
+final canSeeProfit = PermissionService.canEditEquipment(role);
+
+// In the children list, append:
+if (canSeeProfit) _ProfitabilityCard(farmId: farmId),
+if (canSeeProfit) const SizedBox(height: 12),
+if (canSeeProfit)
+  OutlinedButton.icon(
+    icon: const Icon(Iconsax.box),
+    label: const Text('View per-batch profitability'),
+    onPressed: () => Navigator.push(
+      context, MaterialPageRoute(builder: (_) => const BatchesListScreen()),
+    ),
+  ),
+```
+
+Add the `_ProfitabilityCard` widget at the bottom of the file:
+
+```dart
+class _ProfitabilityCard extends ConsumerWidget {
+  const _ProfitabilityCard({required this.farmId});
+  final String farmId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final r = ref.watch(profitabilityForPeriodProvider(farmId));
+    final profitColor = r.grossProfitPhp >= 0
+        ? theme.colorScheme.primary : theme.colorScheme.error;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Profitability', style: theme.textTheme.headlineSmall),
+            const Divider(),
+            _line(theme, 'Revenue', r.revenuePhp),
+            const SizedBox(height: 4),
+            _line(theme, 'Feed', r.feedCostPhp, expense: true),
+            _line(theme, 'Medicine', r.medicineCostPhp, expense: true),
+            _line(theme, 'Labor', r.laborCostPhp, expense: true),
+            _line(theme, 'Utilities', r.utilitiesCostPhp, expense: true),
+            _line(theme, 'Equipment', r.equipmentCostPhp, expense: true),
+            _line(theme, 'Maintenance', r.maintenanceCostPhp, expense: true),
+            _line(theme, 'Other', r.otherCostPhp, expense: true),
+            const Divider(),
+            Row(children: [
+              Text('Gross profit',
+                  style: theme.textTheme.titleMedium),
+              const Spacer(),
+              Text(
+                '${r.grossProfitPhp >= 0 ? "" : "−"}₱${r.grossProfitPhp.abs().toStringAsFixed(0)}',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: profitColor, fontWeight: FontWeight.w700,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: profitColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text('${r.marginPct.toStringAsFixed(1)}% margin',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: profitColor, fontWeight: FontWeight.w700,
+                    )),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _line(ThemeData theme, String label, double value, {bool expense = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Text(label, style: theme.textTheme.bodyMedium),
+        const Spacer(),
+        Text(
+          '${expense ? "−" : ""}₱${value.toStringAsFixed(0)}',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: expense ? theme.colorScheme.onSurfaceVariant : null,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+```
+
+- [ ] **Step 11.2: Batches list screen**
+
+`lib/src/features/profitability/presentation/batches_list_screen.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/widgets/empty_state.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../pigs/application/pig_providers.dart';
+import '../../pigs/domain/batch.dart';
+import 'batch_profitability_screen.dart';
+
+class BatchesListScreen extends ConsumerWidget {
+  const BatchesListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final batchesAsync = ref.watch(batchesStreamProvider(farmId));
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Batches')),
+      body: batchesAsync.when(
+        data: (list) {
+          if (list.isEmpty) {
+            return const EmptyState(
+              icon: Iconsax.element_3,
+              title: 'No batches yet',
+              subtitle: 'Litter or grow-finish batches will appear here once created.',
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: list.length,
+            itemBuilder: (_, i) {
+              final b = list[i];
+              return Card(
+                child: ListTile(
+                  title: Text(b.name, style: theme.textTheme.titleMedium),
+                  subtitle: Text(
+                    '${b.type.label} · ${b.count} head'
+                    '${b.status == BatchStatus.active ? "" : " · ${b.status.value}"}',
+                  ),
+                  trailing: const Icon(Iconsax.arrow_right_3),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => BatchProfitabilityScreen(batchId: b.id),
+                  )),
+                ),
+              );
+            },
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('$e')),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 11.3: Batch profitability screen**
+
+`lib/src/features/profitability/presentation/batch_profitability_screen.dart`:
+
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
+
+import '../../../core/widgets/section_header.dart';
+import '../../activity/application/activity_providers.dart';
+import '../../expenses/application/expense_providers.dart';
+import '../../farms/application/farm_providers.dart';
+import '../../inventory/application/inventory_providers.dart';
+import '../../inventory/data/movement_repository.dart';
+import '../../inventory/domain/supply.dart';
+import '../../inventory/domain/supply_movement.dart';
+import '../../pigs/application/pig_providers.dart';
+import '../../pigs/domain/batch.dart';
+import '../../pigs/domain/health_record.dart';
+import '../../sales/application/sale_providers.dart';
+import '../application/batch_cost_calculator.dart';
+import '../application/profitability_calculator.dart';
+
+class BatchProfitabilityScreen extends ConsumerWidget {
+  const BatchProfitabilityScreen({super.key, required this.batchId});
+  final String batchId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final farmId = ref.watch(selectedFarmIdProvider);
+    if (farmId == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final batches = ref.watch(batchesStreamProvider(farmId)).asData?.value ?? const <Batch>[];
+    final batch = batches.firstWhere(
+      (b) => b.id == batchId,
+      orElse: () => batches.isNotEmpty ? batches.first : throw StateError('not found'),
+    );
+    final sales = ref.watch(salesStreamProvider(farmId)).asData?.value ?? const [];
+    final movements = ref.watch(_movementsForBatchProvider((farmId: farmId, batchId: batchId))).asData?.value ?? const <SupplyMovement>[];
+    final supplies = ref.watch(suppliesStreamProvider(farmId)).asData?.value ?? const <Supply>[];
+    final suppliesById = {for (final s in supplies) s.id: s};
+    final pigs = ref.watch(pigsStreamProvider(farmId)).asData?.value ?? const [];
+    final healthRecords = ref.watch(_allHealthRecordsForBatchProvider(farmId)).asData?.value ?? const <HealthRecord>[];
+    final expenses = ref.watch(expensesForBatchProvider(
+      (farmId: farmId, batchId: batchId),
+    )).asData?.value ?? const [];
+
+    // Member pig IDs: from batch.pigIds plus any historical pigs (best-effort: union with batch.pigIds).
+    final memberPigIds = batch.pigIds.toSet();
+
+    // Build line items index for revenue computation.
+    final lineItemsBySale = <String, List<({String pigId, double lineRevenuePhp})>>{};
+    for (final sale in sales) {
+      lineItemsBySale[sale.id] = ref.watch(saleLineItemsProvider(
+        (farmId: farmId, saleId: sale.id),
+      )).asData?.value
+              .map((li) => (pigId: li.pigId, lineRevenuePhp: li.lineRevenuePhp))
+              .toList() ?? const [];
+    }
+
+    final p = ProfitabilityCalculator.forBatch(
+      batchId: batchId,
+      batchMemberPigIds: memberPigIds,
+      sales: sales,
+      lineItemsBySale: lineItemsBySale,
+      movements: movements,
+      suppliesById: suppliesById,
+      healthRecords: healthRecords,
+      expenses: expenses,
+    );
+    final profitColor = p.grossProfitPhp >= 0
+        ? theme.colorScheme.primary : theme.colorScheme.error;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(batch.name)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${batch.type.label} · ${batch.count} head',
+                      style: theme.textTheme.bodyMedium),
+                  const Divider(),
+                  Row(children: [
+                    Text('Revenue', style: theme.textTheme.bodyMedium),
+                    const Spacer(),
+                    Text('₱${p.revenuePhp.toStringAsFixed(0)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )),
+                  ]),
+                  Row(children: [
+                    Text('Total cost', style: theme.textTheme.bodyMedium),
+                    const Spacer(),
+                    Text('₱${p.totalCostPhp.toStringAsFixed(0)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        )),
+                  ]),
+                  const Divider(),
+                  Row(children: [
+                    Text('Gross profit', style: theme.textTheme.titleMedium),
+                    const Spacer(),
+                    Text(
+                      '${p.grossProfitPhp >= 0 ? "" : "−"}₱${p.grossProfitPhp.abs().toStringAsFixed(0)}',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: profitColor, fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('${p.marginPct.toStringAsFixed(1)}% margin',
+                      style: theme.textTheme.labelMedium?.copyWith(color: profitColor)),
+                ],
+              ),
+            ),
+          ),
+          const SectionHeader(title: 'COST BREAKDOWN'),
+          SizedBox(
+            height: 220,
+            child: _CostPie(breakdown: p),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CostPie extends StatelessWidget {
+  const _CostPie({required this.breakdown});
+  final ProfitabilityBreakdown breakdown;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sections = <PieChartSectionData>[];
+    void add(String label, double v, Color c) {
+      if (v <= 0) return;
+      sections.add(PieChartSectionData(
+        value: v, color: c, title: label,
+        radius: 80,
+        titleStyle: theme.textTheme.labelMedium?.copyWith(color: Colors.white),
+      ));
+    }
+    final palette = [
+      theme.colorScheme.primary,
+      theme.colorScheme.tertiary,
+      theme.colorScheme.secondary,
+      theme.colorScheme.error,
+      theme.colorScheme.primaryContainer,
+      theme.colorScheme.surfaceContainerHigh,
+      theme.colorScheme.onSurfaceVariant,
+    ];
+    add('Feed', breakdown.feedCostPhp, palette[0]);
+    add('Med', breakdown.medicineCostPhp, palette[1]);
+    add('Labor', breakdown.laborCostPhp, palette[2]);
+    add('Util', breakdown.utilitiesCostPhp, palette[3]);
+    add('Eqp', breakdown.equipmentCostPhp, palette[4]);
+    add('Maint', breakdown.maintenanceCostPhp, palette[5]);
+    add('Other', breakdown.otherCostPhp, palette[6]);
+    if (sections.isEmpty) {
+      return Center(child: Text('No costs yet', style: theme.textTheme.bodyMedium));
+    }
+    return PieChart(PieChartData(sections: sections, centerSpaceRadius: 32));
+  }
+}
+
+// Helper providers — colocated here to keep the screen self-contained.
+final _movementsForBatchProvider =
+    StreamProvider.family<List<SupplyMovement>, ({String farmId, String batchId})>((ref, args) {
+  return ref.watch(movementRepositoryProvider).streamForBatch(
+        farmId: args.farmId, batchId: args.batchId);
+});
+
+final _allHealthRecordsForBatchProvider =
+    StreamProvider.family<List<HealthRecord>, String>((ref, farmId) {
+  return ref.watch(firestoreProvider)
+      .collectionGroup('health_records')
+      .snapshots()
+      .map((s) {
+    return s.docs.where((d) {
+      final parts = d.reference.path.split('/');
+      return parts[0] == 'farms' && parts[1] == farmId;
+    }).map((d) {
+      final pigId = d.reference.parent.parent!.id;
+      return HealthRecord.fromFirestore(d, farmId: farmId, pigId: pigId);
+    }).toList();
+  });
+});
+```
+
+- [ ] **Step 11.4: Wire route + commit**
+
+In `app_router.dart`:
+
+```dart
+GoRoute(path: '/batches', builder: (c, s) => const BatchesListScreen()),
+```
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(yield,profitability): Profitability card + Batches list + Batch P&L
+
+- Yield Reports gets a sixth card (Owner/Manager only): revenue,
+  7-category cost lines, gross profit, margin %
+- Batches list links to per-batch profitability
+- Per-batch P&L screen with cost-breakdown pie chart"
+```
+
+---
+
+## Task 12: Dashboard tiles — Revenue this month + Low stock
+
+**Goal:** Two new stat tiles on the dashboard, visible to Owner/Manager only.
+
+**Files:**
+- Modify: `lib/src/features/dashboard/snapshot_card.dart`
+
+### Steps
+
+- [ ] **Step 12.1: Extend SnapshotCard with revenue + low-stock tiles**
+
+Update `lib/src/features/dashboard/snapshot_card.dart`. After the existing stat tiles, add two more (gated on Owner/Manager role):
+
+```dart
+// At top of file, add imports:
+import '../../../core/permissions/permission_service.dart';
+import '../../../core/permissions/role.dart';
+import '../../authentication/application/auth_providers.dart';
+import '../../inventory/application/inventory_providers.dart';
+import '../../sales/application/sale_providers.dart';
+import '../../team/application/team_providers.dart';
+
+// Inside the build method, compute role:
+final user = ref.watch(authStateChangesProvider).asData?.value;
+final role = (farmId != null && user != null)
+    ? (ref.watch(memberForUserProvider(
+        (farmId: farmId, userId: user.uid),
+      )).asData?.value?.role ?? Role.worker)
+    : Role.worker;
+final canSeeFinance = PermissionService.canEditEquipment(role); // Same role gate as profitability
+
+// Compute revenue this month
+double revenueThisMonth = 0;
+if (canSeeFinance && farmId != null) {
+  final sales = ref.watch(salesStreamProvider(farmId)).asData?.value ?? const [];
+  final now = DateTime.now();
+  final monthStart = DateTime(now.year, now.month, 1);
+  for (final s in sales) {
+    if (!s.saleDate.toDate().isBefore(monthStart)) {
+      revenueThisMonth += s.totalRevenuePhp;
+    }
+  }
+}
+
+// Compute low-stock count
+int lowStockCount = 0;
+if (farmId != null) {
+  final supplies = ref.watch(suppliesStreamProvider(farmId)).asData?.value ?? const [];
+  lowStockCount = supplies.where((s) => s.isLowStock || s.isOutOfStock).length;
+}
+
+// Add to the tiles section, inside the existing Column children:
+if (canSeeFinance)
+  StatTile(
+    icon: Iconsax.money_recive,
+    label: 'Revenue this month',
+    value: '₱${NumberFormat.decimalPattern("en_PH").format(revenueThisMonth.round())}',
+  ),
+StatTile(
+  icon: Iconsax.box,
+  label: 'Low stock items',
+  value: lowStockCount.toString(),
+),
+```
+
+Note: `StatTile` is the existing widget at `lib/src/core/widgets/stat_tile.dart`. If the revenue tile needs to push to `/sales` or low-stock to `/inventory?filter=low`, that's tap behavior we can add later — for v1 keep them as informational tiles.
+
+- [ ] **Step 12.2: Run + commit**
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(dashboard): Revenue this month + Low stock items stat tiles
+
+- Revenue tile gated to Owner/Manager only (matches profitability gate)
+- Low stock tile visible to all roles
+- Both update reactively via streamed providers"
+```
+
+---
+
+## Task 13: Firestore security rules + final audit
+
+**Goal:** Add per-collection rules for every new collection introduced in Sub-project B, matching the §8 permissions matrix.
+
+**Files:**
+- Modify: `firestore.rules`
+
+### Steps
+
+- [ ] **Step 13.1: Add new helpers if needed**
+
+The existing `firestore.rules` already has `isOwner`/`isManager`/`isWorker`/`isVet`, `isMember`, etc. Add a helper for "can write financial records":
+
+```javascript
+function canWriteFinancial(farmId) {
+  return isOwner(farmId) || isManager(farmId);
+}
+function canLogConsumption(farmId) {
+  return isOwner(farmId) || isManager(farmId) || isWorker(farmId);
+}
+```
+
+- [ ] **Step 13.2: Add rules for inventory, purchases, expenses, sales**
+
+Inside `match /farms/{farmId} { ... }`, after the existing rules, append:
+
+```javascript
+// supplies
+match /supplies/{supplyId} {
+  allow read: if isMember(farmId);
+  allow create, update, delete: if canWriteFinancial(farmId)
+    // Workers can update only specific fields (currentStock decrement via increment) —
+    // since we use a transaction-based logConsumption that runs as the worker,
+    // we need to allow worker writes to currentStock + updatedAt.
+    || (isWorker(farmId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['currentStock', 'updatedAt']));
+}
+
+// supply_movements
+match /supply_movements/{movementId} {
+  allow read: if isMember(farmId);
+  allow create: if canWriteFinancial(farmId)
+    || (isWorker(farmId) && request.resource.data.type == 'consumption');
+  allow update, delete: if false;  // immutable ledger
+}
+
+// purchases
+match /purchases/{purchaseId} {
+  allow read: if canWriteFinancial(farmId);
+  allow create, update, delete: if canWriteFinancial(farmId);
+
+  match /line_items/{itemId} {
+    allow read: if canWriteFinancial(farmId);
+    allow create, update, delete: if canWriteFinancial(farmId);
+  }
+}
+
+// expenses
+match /expenses/{expenseId} {
+  allow read: if canWriteFinancial(farmId);
+  allow create: if canWriteFinancial(farmId);
+  allow update, delete: if canWriteFinancial(farmId);
+}
+
+// sales
+match /sales/{saleId} {
+  allow read: if canWriteFinancial(farmId);
+  allow create: if canWriteFinancial(farmId);
+  allow update, delete: if canWriteFinancial(farmId);
+
+  match /line_items/{itemId} {
+    allow read: if canWriteFinancial(farmId);
+    allow create, update, delete: if canWriteFinancial(farmId);
+  }
+}
+```
+
+Also: the **profitability views** (BatchCostCalculator, ProfitabilityCalculator) read pigs, batches, health_records, supplies, supply_movements, expenses, sales, sale line_items — verify each collection's read rule:
+
+- `pigs`, `batches`, `health_records` — already readable by members (from sub-project A's rules)
+- `supplies`, `supply_movements` — readable by members (added above)
+- `expenses`, `sales`, `purchases`, `line_items` — restricted to `canWriteFinancial`
+
+Workers and Vets cannot read these — which is the desired behavior (they shouldn't see financial numbers).
+
+- [ ] **Step 13.3: Storage rules — verify receipts/photos**
+
+The existing `storage.rules` already permits anyone-who-is-a-member to read/write under `/farms/{farmId}/**`. New paths used by Sub-project B:
+- `farms/{farmId}/purchases/{purchaseId}/receipt.jpg`
+- `farms/{farmId}/expenses/{expenseId}/receipt.jpg`
+
+These fall under the existing rule — no change needed. The 5 MB cap remains in effect.
+
+- [ ] **Step 13.4: Manual smoke checklist for Sub-project B**
+
+Append to `docs/superpowers/manual-smoke-checklist.md`:
+
+```markdown
+## Sub-project B — Operations & Financials
+
+### Inventory
+- [ ] Owner adds a supply "Grower Feed" (sack, threshold 5).
+- [ ] Owner logs a purchase: 10 sacks at ₱1650. supply.currentStock = 10, weightedAvg = 1650.
+- [ ] Owner logs another purchase: 5 sacks at ₱1750. supply.currentStock = 15, weightedAvg ≈ 1683.33.
+- [ ] Worker logs consumption: 2 sacks on Pen A. supply.currentStock = 13. supply_movement has relatedPenId and relatedBatchId.
+- [ ] Trying to consume 100 sacks shows "Insufficient stock" inline error.
+
+### Expenses
+- [ ] Owner logs a Utilities expense of ₱8500 with description "May electricity". Appears in list with running total.
+- [ ] Filter chips work.
+
+### Sales
+- [ ] Owner opens "Log sale", picks 12 finisher pigs via multi-select bottom sheet.
+- [ ] First row's price/kg defaults to subsequent rows.
+- [ ] Live total updates as weights/prices change.
+- [ ] Save flips all 12 pigs to `sold` atomically; activity feed shows one sale entry.
+- [ ] Attempt to log sale with a pig that's already sold (in another transaction) → atomic rejection.
+
+### Pig Detail integration
+- [ ] Open a sold pig → Profile shows "Sold" banner with date and buyer.
+- [ ] Tap banner → opens Sale Detail screen.
+
+### Profitability
+- [ ] Yield Reports shows Profitability card for Owner/Manager.
+- [ ] Card numbers match a hand-calculation on the seeded data within ₱1 rounding.
+- [ ] Batches list shows all active/closed batches.
+- [ ] Tap a batch → per-batch P&L with cost pie chart.
+
+### Dashboard
+- [ ] "Revenue this month" tile visible to Owner/Manager only; Worker doesn't see it.
+- [ ] "Low stock items" tile shows count of supplies below threshold; tapping it opens inventory (filter not auto-applied — manual filter in v1).
+
+### Security
+- [ ] Worker cannot see Purchases, Expenses, Sales lists (routes 404 or empty due to read denial).
+- [ ] Vet cannot see financial routes.
+- [ ] Cross-farm access denied (try changing farm in switcher mid-session).
+```
+
+- [ ] **Step 13.5: Final run + commit**
+
+```bash
+flutter analyze && flutter test
+git add -A
+git commit -m "feat(security,docs): Firestore rules for inventory/purchases/expenses/sales
+
+- Workers can read supplies + supply_movements + create consumption
+  movements; cannot read purchases/sales/expenses
+- Managers/Owners can read+write all financial records
+- Vets see inventory but no financial reports
+- supply_movements are immutable (no update/delete)
+- Manual smoke checklist appended for Sub-project B"
+```
+
+---
+
+## Final verification
+
+After all 13 tasks are complete:
+
+- [ ] **`flutter analyze`** — must be 0 issues. The baseline at start of B was 0; do not regress.
+- [ ] **`flutter test`** — all tests pass. Expected count: ~105 (pre-B baseline) + ~30 new = ~135 tests.
+- [ ] **Manual smoke checklist** — every checkbox in the new Sub-project B section.
+- [ ] **Spec §13 success criteria** — every numbered criterion is demonstrably true on seeded data.
+- [ ] Tag the branch: `git tag sub-project-B` (after Sub-project A is also tagged).
+
+---
+
+## Notes for the executing engineer
+
+- **Riverpod 3 record args**: provider families use `({String farmId, String batchId})` records — type them precisely. Mismatched arg shapes silently no-op.
+- **`fake_cloud_firestore` collection-group quirks**: `findSaleForPig` uses `collectionGroup('line_items')`. This works in fake_cloud_firestore 4.x but ordering may differ from prod — verify with the emulator when ready.
+- **Transactions vs batches**: read the spec §7.12 atomicity table. Three operations use `runTransaction` (purchase, sale, consumption) because of read-before-write. Everything else uses `WriteBatch`.
+- **Don't add UI for `Pig.currentBatchId` editing** — the field is settable from farrowing flows (Task 5 sets up the repository methods); a UI to manually assign pigs to batches can wait for a future polish task.
+- **Profitability requires data**. The numbers will read as 0 until purchases, consumption, and sales are logged. Seed data for manual testing or wait until real flows fill it in.
+- **Carry over CLAUDE.md / .impeccable.md design rules** in every new screen. The polish bar is the same as Sub-project A's finished state.

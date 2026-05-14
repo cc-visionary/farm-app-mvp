@@ -8,6 +8,7 @@ import '../application/pig_providers.dart';
 import '../domain/breeding_record.dart';
 import '../domain/pig.dart';
 import 'breeding_log_screen.dart';
+import 'farrowing_log_screen.dart';
 
 class PigDetailScreen extends ConsumerWidget {
   const PigDetailScreen({super.key, required this.pigId});
@@ -238,7 +239,21 @@ class _BreedingTab extends ConsumerWidget {
                               onPressed: () =>
                                   _showPregnancyCheck(context, ref, r),
                             )
-                          : null,
+                          : r.status == BreedingStatus.confirmed
+                              ? IconButton(
+                                  icon: const Icon(Icons.child_friendly),
+                                  tooltip: 'Log farrowing',
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FarrowingLogScreen(
+                                        sow: pig,
+                                        breedingRecord: r,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : null,
                     ),
                   ),
                 )

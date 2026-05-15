@@ -2717,4 +2717,1089 @@ git commit -m "feat(i18n): Tagalog completion + TRANSLATION-REVIEW markers
 
 ---
 
-_(Tasks 11–15 continue. Each follows the established TDD + commit cadence. Remaining tasks cover the four polish items (activity-on-update, UserDisplay widget, PhotoUploadError classification, pie chart side legend) and the perf audit.)_
+---
+
+## Task 11: Polish A — Activity entries on `update*` methods
+
+**Goal:** Equipment, Pig, and Supply `update*` repository methods currently silently mutate documents. Make each emit an activity entry atomically.
+
+**Files:**
+- Modify:
+  - `lib/src/features/equipment/data/equipment_repository.dart`
+  - `lib/src/features/pigs/data/pig_repository.dart`
+  - `lib/src/features/inventory/data/supply_repository.dart`
+- Modify call sites:
+  - `lib/src/features/equipment/presentation/add_edit_equipment_screen.dart`
+  - `lib/src/features/pigs/presentation/add_edit_pig_screen.dart`
+  - `lib/src/features/inventory/presentation/add_edit_supply_screen.dart`
+- Modify tests:
+  - `test/features/equipment/data/equipment_repository_test.dart`
+  - `test/features/pigs/data/pig_repository_test.dart`
+  - `test/features/inventory/data/supply_repository_test.dart`
+
+### Steps
+
+- [ ] **Step 11.1: Test — EquipmentRepository.updateEquipment writes activity**
+
+Append to `test/features/equipment/data/equipment_repository_test.dart`:
+
+```dart
+group('updateEquipment writes activity entry atomically', () {
+  test('records equipment_updated', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = EquipmentRepository(f, ActivityRepository(f));
+    final id = await repo.createEquipment(
+      farmId: 'f1', name: 'Fan A', type: EquipmentType.ventilation, areaId: 'a1',
+      status: EquipmentStatus.inUse, purchaseDate: null, purchaseCostPhp: null,
+      photoUrl: null, notes: null,
+      actorUserId: 'u1', actorDisplayName: 'Juan',
+    );
+    final beforeActivity = (await f.collection('farms').doc('f1').collection('activity').get()).docs.length;
+
+    await repo.updateEquipment(
+      farmId: 'f1', equipmentId: id,
+      name: 'Fan A (renamed)', type: EquipmentType.ventilation, areaId: 'a1',
+      status: EquipmentStatus.inUse, purchaseDate: null, purchaseCostPhp: null,
+      photoUrl: null, notes: 'updated',
+      actorUserId: 'u1', actorDisplayName: 'Juan',
+    );
+
+    final afterActivity = await f.collection('farms').doc('f1').collection('activity').get();
+    expect(afterActivity.docs.length, beforeActivity + 1);
+    final last = afterActivity.docs.firstWhere(
+      (d) => d.data()['action'] == 'equipment_updated',
+    );
+    expect(last.data()['entityId'], id);
+    expect(last.data()['summary'], contains('Fan A (renamed)'));
+  });
+});
+```
+
+- [ ] **Step 11.2: Implement — updateEquipment with activity**
+
+Edit `lib/src/features/equipment/data/equipment_repository.dart`. Change `updateEquipment` signature to accept `actorUserId` and `actorDisplayName`. Wrap the existing `.update(...)` call in a `WriteBatch` that also writes the activity entry:
+
+```dart
+Future<void> updateEquipment({
+  required String farmId,
+  required String equipmentId,
+  required String name,
+  required EquipmentType type,
+  required String? areaId,
+  required EquipmentStatus status,
+  required Timestamp? purchaseDate,
+  required double? purchaseCostPhp,
+  required String? photoUrl,
+  required String? notes,
+  required String actorUserId,
+  required String actorDisplayName,
+}) async {
+  final batch = _firestore.batch();
+  batch.update(_col(farmId).doc(equipmentId), {
+    'name': name.trim(),
+    'type': type.value,
+    'areaId': areaId,
+    'status': status.value,
+    'purchaseDate': purchaseDate,
+    'purchaseCostPhp': purchaseCostPhp,
+    'photoUrl': photoUrl,
+    'notes': notes,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+  _activity.addActivityToBatch(
+    batch: batch, farmId: farmId,
+    actorUserId: actorUserId, actorDisplayName: actorDisplayName,
+    action: 'equipment_updated',
+    entityType: 'equipment', entityId: equipmentId,
+    areaId: areaId,
+    summary: '$actorDisplayName updated equipment "${name.trim()}"',
+  );
+  await batch.commit();
+}
+```
+
+Run the new test: expect pass.
+
+- [ ] **Step 11.3: Update caller in add_edit_equipment_screen.dart**
+
+The existing caller passes everything except the two new actor params. Find it (in `_save()`) and add:
+
+```dart
+actorUserId: user.uid, actorDisplayName: actorName,
+```
+
+(Both already in scope from the create path.)
+
+- [ ] **Step 11.4: Test + implement — PigRepository.updatePig**
+
+Append test to `test/features/pigs/data/pig_repository_test.dart`:
+
+```dart
+test('updatePig writes pig_updated activity', () async {
+  final repo = newRepo();
+  final id = await repo.createPig(
+    farmId: 'f1', tagId: 'P-1', sex: PigSex.female, breed: 'Yorkshire',
+    birthDate: Timestamp.now(), sireId: null, damId: null,
+    stage: PigStage.gilt, currentAreaId: 'a1', currentPenId: null,
+    currentWeight: null, photoUrl: null, notes: null,
+    actorUserId: 'u', actorDisplayName: 'J',
+  );
+  final fs = (repo as dynamic)._firestore as FakeFirebaseFirestore;
+  final beforeActivity = (await fs.collection('farms').doc('f1').collection('activity').get()).docs.length;
+
+  await repo.updatePig(
+    farmId: 'f1', pigId: id, tagId: 'P-1', sex: PigSex.female, breed: 'Duroc',
+    birthDate: Timestamp.now(), sireId: null, damId: null,
+    stage: PigStage.sow, currentAreaId: 'a1', currentPenId: null,
+    currentWeight: null, photoUrl: null, notes: null,
+    actorUserId: 'u', actorDisplayName: 'J',
+  );
+
+  final after = await fs.collection('farms').doc('f1').collection('activity').get();
+  expect(after.docs.length, beforeActivity + 1);
+  expect(after.docs.last.data()['action'], 'pig_updated');
+});
+```
+
+Note: accessing `_firestore` from outside violates encapsulation — instead, create the FakeFirebaseFirestore in the test setup and pass it to `EquipmentRepository(f, ActivityRepository(f))`. The existing `newRepo()` helper in `pig_repository_test.dart` does exactly that; rewrite the test to use it. Look at existing test pattern in the file and follow it.
+
+In `lib/src/features/pigs/data/pig_repository.dart`, modify `updatePig` signature to add `actorUserId` and `actorDisplayName`, wrap in WriteBatch with activity entry (same pattern as Equipment above), action `pig_updated`, summary `"$actorDisplayName updated pig $tagId"`.
+
+- [ ] **Step 11.5: Update caller in add_edit_pig_screen.dart**
+
+In the existing `_save()` method, the `updatePig` call already has `actorName` and `user.uid` in scope. Pass them as the new params.
+
+- [ ] **Step 11.6: Test + implement — SupplyRepository.updateSupply**
+
+Same pattern. Test, then implement, then update `add_edit_supply_screen.dart`'s `_save()` call. Action `supply_updated`, summary `"$actorDisplayName updated supply '$name'"`.
+
+- [ ] **Step 11.7: Run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+Expected: 0 issues, 150 tests pass (147 + 3 new).
+
+```bash
+git add -A
+git commit -m "feat(audit): activity entries on update* methods
+
+- EquipmentRepository.updateEquipment, PigRepository.updatePig,
+  SupplyRepository.updateSupply now atomically write activity entries
+- Actions: equipment_updated, pig_updated, supply_updated
+- 3 new tests verifying atomic batch behavior
+- Call sites updated with actorUserId + actorDisplayName"
+```
+
+---
+
+## Task 12: Polish B — `UserDisplay` widget + call-site refactors
+
+**Goal:** Stop showing raw Firebase UIDs in shift chips, task assignment, and roster widget. Use `userDisplayNameProvider` (existing from Sub-project A Task 3 fix) via a small reusable `UserDisplay` widget.
+
+**Files:**
+- Create:
+  - `lib/src/core/widgets/user_display.dart`
+  - `test/core/widgets/user_display_test.dart`
+- Modify:
+  - `lib/src/features/shifts/presentation/edit_shift_screen.dart`
+  - `lib/src/features/shifts/presentation/roster_widget.dart`
+  - `lib/src/features/tasks/presentation/create_task_screen.dart`
+  - `lib/src/features/tasks/presentation/tasks_screen.dart`
+
+### Steps
+
+- [ ] **Step 12.1: Test — UserDisplay renders resolved name and falls back**
+
+`test/core/widgets/user_display_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/core/widgets/user_display.dart';
+import 'package:farm_app/src/features/farms/application/farm_providers.dart';
+
+void main() {
+  testWidgets('shows resolved name when provider returns data', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        userDisplayNameProvider('u1').overrideWith((ref) async => 'Juan dela Cruz'),
+      ],
+      child: const MaterialApp(home: Scaffold(body: UserDisplay(userId: 'u1'))),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Juan dela Cruz'), findsOneWidget);
+  });
+
+  testWidgets('falls back to userId while loading', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        // Override with a never-completing future to simulate loading.
+        userDisplayNameProvider('u-pending').overrideWith((ref) => Future.delayed(
+          const Duration(seconds: 30), () => 'X')),
+      ],
+      child: const MaterialApp(home: Scaffold(body: UserDisplay(userId: 'u-pending'))),
+    ));
+    // Before settle: still loading, so UID falls back.
+    expect(find.text('u-pending'), findsOneWidget);
+  });
+}
+```
+
+- [ ] **Step 12.2: Implement UserDisplay**
+
+`lib/src/core/widgets/user_display.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/farms/application/farm_providers.dart';
+
+/// Renders a user's display name via [userDisplayNameProvider].
+/// Falls back to the userId while loading or if the lookup fails.
+class UserDisplay extends ConsumerWidget {
+  const UserDisplay({super.key, required this.userId, this.style, this.maxLines});
+  final String userId;
+  final TextStyle? style;
+  final int? maxLines;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nameAsync = ref.watch(userDisplayNameProvider(userId));
+    final text = nameAsync.asData?.value ?? userId;
+    return Text(
+      text,
+      style: style,
+      maxLines: maxLines,
+      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+    );
+  }
+}
+```
+
+Run test:
+```bash
+flutter test test/core/widgets/user_display_test.dart
+```
+Expected: 2 tests pass.
+
+- [ ] **Step 12.3: Refactor edit_shift_screen.dart**
+
+Find the worker chips section. The current code shows:
+
+```dart
+FilterChip(
+  label: Text(m.userId),
+  selected: _workerIds.contains(m.userId),
+  ...
+)
+```
+
+Replace `Text(m.userId)` with `UserDisplay(userId: m.userId)`. Add import:
+
+```dart
+import 'package:farm_app/src/core/widgets/user_display.dart';
+```
+
+- [ ] **Step 12.4: Refactor roster_widget.dart**
+
+Find the line that renders the assigned user IDs joined by commas:
+
+```dart
+Text('  • ${s.name} (${s.startTime}-${s.endTime}) — '
+     '${(s.assignedUserIds as List).join(", ")}'),
+```
+
+Replace with a `Row` or `Wrap` showing each assigned user via `UserDisplay`:
+
+```dart
+Padding(
+  padding: const EdgeInsets.only(left: 8),
+  child: Wrap(
+    spacing: 8,
+    children: [
+      Text('• ${s.name} (${s.startTime}-${s.endTime}) — ',
+           style: Theme.of(context).textTheme.bodyMedium),
+      for (var i = 0; i < (s.assignedUserIds as List).length; i++) ...[
+        if (i > 0) const Text(', '),
+        UserDisplay(userId: s.assignedUserIds[i] as String),
+      ],
+    ],
+  ),
+),
+```
+
+Add the import.
+
+- [ ] **Step 12.5: Refactor create_task_screen.dart**
+
+The "Specific user" dropdown currently shows `Text(m.userId)`. Replace with `UserDisplay(userId: m.userId)`:
+
+```dart
+DropdownButtonFormField<String>(
+  initialValue: _assignId,
+  decoration: const InputDecoration(labelText: 'User'),
+  items: members.map((m) =>
+    DropdownMenuItem(value: m.userId,
+        child: UserDisplay(userId: m.userId))).toList(),
+  onChanged: (v) => setState(() => _assignId = v),
+),
+```
+
+Add import.
+
+- [ ] **Step 12.6: Refactor tasks_screen.dart**
+
+The `_TaskCard` subtitle currently includes:
+
+```dart
+'${task.assignedTo == null ? "" : " · assigned to ${task.assignedTo!.kind}:${task.assignedTo!.id}"}'
+```
+
+When the assignment is `kind: 'user'`, use UserDisplay. Refactor the subtitle to a `Row` mixing localized text and `UserDisplay`:
+
+```dart
+subtitle: Row(
+  children: [
+    Text(l.task_card_due(formatMediumDate(context, due))),
+    if (task.assignedTo != null && task.assignedTo!.kind == 'user') ...[
+      const Text(' · '),
+      UserDisplay(userId: task.assignedTo!.id,
+          style: theme.textTheme.bodyMedium),
+    ],
+  ],
+),
+```
+
+(For area assignments, area name resolution is more involved — skip for v1 and show the raw areaId.)
+
+Add imports.
+
+- [ ] **Step 12.7: Run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+Expected: 0 issues, 152 tests pass (150 + 2 new).
+
+```bash
+git add -A
+git commit -m "feat(ui): UserDisplay widget; replace raw UIDs in shifts/tasks/roster
+
+- New ConsumerWidget at lib/src/core/widgets/user_display.dart
+- Falls back to userId while userDisplayNameProvider is loading
+- 4 call sites refactored: edit_shift, roster, create_task, tasks_screen
+- 2 widget tests covering loaded and loading states"
+```
+
+---
+
+## Task 13: Polish C — `PhotoUploadError` classification + UI surface
+
+**Goal:** Replace blind `catch (_)` in `PhotoUploadService` with a typed `PhotoUploadError` taxonomy (retryable / terminal). Surface terminal errors as SnackBars via a Riverpod-managed error stream consumed by `AppShell`. Retryable errors stay quietly queued.
+
+**Files:**
+- Create:
+  - `lib/src/core/errors/photo_upload_error.dart`
+  - `test/core/errors/photo_upload_error_test.dart`
+- Modify:
+  - `lib/src/features/media/photo_upload_service.dart`
+  - `lib/src/features/media/media_providers.dart`
+  - `lib/src/core/widgets/app_shell.dart`
+  - `lib/src/l10n/app_en.arb`, `lib/src/l10n/app_fil.arb` (error messages)
+
+### Steps
+
+- [ ] **Step 13.1: Test — PhotoUploadError.classify**
+
+`test/core/errors/photo_upload_error_test.dart`:
+
+```dart
+import 'dart:async';
+import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:farm_app/src/core/errors/photo_upload_error.dart';
+
+void main() {
+  test('network exceptions classify as retryable', () {
+    final classified = PhotoUploadError.classify(
+      const SocketException('no internet'));
+    expect(classified.kind, PhotoUploadErrorKind.retryable);
+    expect(classified.code, 'network');
+  });
+
+  test('TimeoutException classifies as retryable', () {
+    final classified = PhotoUploadError.classify(TimeoutException('slow'));
+    expect(classified.kind, PhotoUploadErrorKind.retryable);
+    expect(classified.code, 'network');
+  });
+
+  test('Firebase permission-denied classifies as terminal', () {
+    final fe = FirebaseException(plugin: 'firebase_storage', code: 'permission-denied');
+    final classified = PhotoUploadError.classify(fe);
+    expect(classified.kind, PhotoUploadErrorKind.terminal);
+    expect(classified.code, 'permission-denied');
+  });
+
+  test('Firebase quota-exceeded classifies as terminal', () {
+    final fe = FirebaseException(plugin: 'firebase_storage', code: 'quota-exceeded');
+    expect(PhotoUploadError.classify(fe).kind, PhotoUploadErrorKind.terminal);
+  });
+
+  test('Firebase unavailable classifies as retryable', () {
+    final fe = FirebaseException(plugin: 'firebase_storage', code: 'unavailable');
+    expect(PhotoUploadError.classify(fe).kind, PhotoUploadErrorKind.retryable);
+  });
+
+  test('Unknown errors classify as retryable (defensive)', () {
+    expect(PhotoUploadError.classify(Object()).kind, PhotoUploadErrorKind.retryable);
+  });
+}
+```
+
+- [ ] **Step 13.2: Implement PhotoUploadError**
+
+`lib/src/core/errors/photo_upload_error.dart`:
+
+```dart
+import 'dart:async';
+import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
+
+enum PhotoUploadErrorKind { retryable, terminal }
+
+/// Typed error for photo uploads. [kind] drives retry vs surface-to-user;
+/// [code] is the underlying Firebase / system code for telemetry.
+class PhotoUploadError implements Exception {
+  PhotoUploadError({required this.kind, required this.code, this.cause});
+  final PhotoUploadErrorKind kind;
+  final String code;
+  final Object? cause;
+
+  /// Classifies an arbitrary error/exception into a [PhotoUploadError].
+  /// Conservative default: unknown failures are [retryable] so we don't
+  /// drop user data due to misclassification.
+  static PhotoUploadError classify(Object e) {
+    if (e is FirebaseException) {
+      switch (e.code) {
+        case 'unauthenticated':
+        case 'permission-denied':
+        case 'invalid-argument':
+        case 'quota-exceeded':
+          return PhotoUploadError(
+            kind: PhotoUploadErrorKind.terminal, code: e.code, cause: e);
+        case 'unavailable':
+        case 'deadline-exceeded':
+        case 'cancelled':
+        case 'internal':
+          return PhotoUploadError(
+            kind: PhotoUploadErrorKind.retryable, code: e.code, cause: e);
+      }
+    }
+    if (e is SocketException || e is TimeoutException) {
+      return PhotoUploadError(
+        kind: PhotoUploadErrorKind.retryable, code: 'network', cause: e);
+    }
+    return PhotoUploadError(
+      kind: PhotoUploadErrorKind.retryable, code: 'unknown', cause: e);
+  }
+
+  @override
+  String toString() => 'PhotoUploadError(kind=$kind, code=$code, cause=$cause)';
+}
+```
+
+Run test:
+```bash
+flutter test test/core/errors/photo_upload_error_test.dart
+```
+Expected: 6 tests pass.
+
+- [ ] **Step 13.3: Refactor PhotoUploadService**
+
+Edit `lib/src/features/media/photo_upload_service.dart`. Replace blind catches with classified handling. Add a `Stream<PhotoUploadError>` exposed for UI:
+
+```dart
+import 'dart:async';
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '../../core/errors/photo_upload_error.dart';
+import 'photo_upload_queue.dart';
+
+class PhotoUploadService {
+  PhotoUploadService(this._storage, this._firestore, this._queue);
+  final FirebaseStorage _storage;
+  final FirebaseFirestore _firestore;
+  final PhotoUploadQueue _queue;
+
+  final _errorController = StreamController<PhotoUploadError>.broadcast();
+  Stream<PhotoUploadError> get errorStream => _errorController.stream;
+
+  Future<String?> uploadAndAttach({
+    required File file,
+    required String storagePath,
+    required String recordPath,
+    required String fieldName,
+  }) async {
+    try {
+      final ref = _storage.ref(storagePath);
+      final task = await ref.putFile(file);
+      final url = await task.ref.getDownloadURL();
+      await _attachUrlToRecord(recordPath: recordPath, fieldName: fieldName, url: url);
+      return url;
+    } catch (e) {
+      final classified = PhotoUploadError.classify(e);
+      if (classified.kind == PhotoUploadErrorKind.retryable) {
+        await _queue.enqueue(QueuedUpload(
+          localPath: file.path, storagePath: storagePath,
+          recordPath: recordPath, fieldName: fieldName,
+        ));
+      }
+      // Always surface to UI; UI decides messaging by kind.
+      _errorController.add(classified);
+      return null;
+    }
+  }
+
+  Future<void> _attachUrlToRecord({
+    required String recordPath,
+    required String fieldName,
+    required String url,
+  }) async {
+    final ref = _firestore.doc(recordPath);
+    if (fieldName.endsWith('s')) {
+      await ref.update({fieldName: FieldValue.arrayUnion([url])});
+    } else {
+      await ref.update({fieldName: url});
+    }
+  }
+
+  Future<void> flushQueue() async {
+    final list = await _queue.all();
+    for (final q in list) {
+      try {
+        final file = File(q.localPath);
+        if (!file.existsSync()) {
+          await _queue.remove(q);
+          continue;
+        }
+        final ref = _storage.ref(q.storagePath);
+        final task = await ref.putFile(file);
+        final url = await task.ref.getDownloadURL();
+        await _attachUrlToRecord(recordPath: q.recordPath, fieldName: q.fieldName, url: url);
+        await _queue.remove(q);
+      } catch (e) {
+        final classified = PhotoUploadError.classify(e);
+        if (classified.kind == PhotoUploadErrorKind.terminal) {
+          // Don't loop forever on a permanently-broken upload.
+          await _queue.remove(q);
+          _errorController.add(classified);
+        }
+        // Retryable: leave in queue for next flush.
+      }
+    }
+  }
+
+  void dispose() {
+    _errorController.close();
+  }
+}
+```
+
+- [ ] **Step 13.4: Add provider for the error stream**
+
+In `lib/src/features/media/media_providers.dart`, add:
+
+```dart
+import '../../core/errors/photo_upload_error.dart';
+
+final photoUploadErrorStreamProvider = StreamProvider<PhotoUploadError>((ref) {
+  final svc = ref.watch(photoUploadServiceProvider);
+  if (svc == null) return const Stream.empty();
+  return svc.errorStream;
+});
+```
+
+- [ ] **Step 13.5: Surface errors in AppShell**
+
+Edit `lib/src/core/widgets/app_shell.dart`. Subscribe to the stream and show a SnackBar:
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
+import '../../features/media/media_providers.dart';
+import '../errors/photo_upload_error.dart';
+import '../../l10n/generated/app_localizations.dart';
+import 'offline_banner.dart';
+
+class AppShell extends ConsumerStatefulWidget {
+  const AppShell({super.key, required this.child});
+  final Widget child;
+  @override
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    ref.listen<AsyncValue<PhotoUploadError>>(
+      photoUploadErrorStreamProvider,
+      (prev, next) {
+        final err = next.asData?.value;
+        if (err == null) return;
+        final msg = err.kind == PhotoUploadErrorKind.retryable
+            ? l.photo_upload_retry_pending
+            : l.photo_upload_terminal(err.code);
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      },
+    );
+    return Column(children: [
+      const OfflineBanner(),
+      Expanded(child: widget.child),
+    ]);
+  }
+}
+```
+
+- [ ] **Step 13.6: Add error message ARB keys**
+
+Append to `lib/src/l10n/app_en.arb`:
+
+```json
+,
+"photo_upload_retry_pending": "Couldn't upload photo. Will retry when online.",
+"photo_upload_terminal": "Couldn't upload photo: {code}.",
+"@photo_upload_terminal": {"placeholders": {"code": {"type": "String"}}}
+```
+
+Append to `lib/src/l10n/app_fil.arb`:
+
+```json
+,
+"photo_upload_retry_pending": "Hindi na-upload ang larawan. Susubukang muli kapag online.",
+"photo_upload_terminal": "Hindi na-upload ang larawan: {code}."
+```
+
+Run `flutter pub get`.
+
+- [ ] **Step 13.7: Run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+Expected: 0 issues, 158 tests pass (152 + 6 new).
+
+```bash
+git add -A
+git commit -m "feat(media): typed PhotoUploadError with retryable/terminal classification
+
+- Replace blind catch (_) with PhotoUploadError.classify(Object)
+- Terminal errors surface as SnackBar via stream + AppShell listener
+- Retryable errors quietly enqueued (existing behavior preserved)
+- 6 unit tests covering classification matrix
+- ARB keys added: photo_upload_retry_pending, photo_upload_terminal"
+```
+
+---
+
+## Task 14: Polish D — Pie chart side legend
+
+**Goal:** Refactor `BatchProfitabilityScreen._CostPie` to render labels in a side legend below the pie. Slices show percentages only when slice ≥ 8%; small slices stay clean.
+
+**Files:**
+- Modify: `lib/src/features/profitability/presentation/batch_profitability_screen.dart`
+
+### Steps
+
+- [ ] **Step 14.1: Read current implementation**
+
+Open `lib/src/features/profitability/presentation/batch_profitability_screen.dart`. Find `_CostPie` (likely near the bottom). Note its current shape: builds `PieChartSectionData` with in-slice `title: 'Feed', 'Med', ...` labels.
+
+- [ ] **Step 14.2: Replace `_CostPie` with new version**
+
+Replace the entire `_CostPie` class:
+
+```dart
+class _CostPie extends StatelessWidget {
+  const _CostPie({required this.breakdown});
+  final ProfitabilityBreakdown breakdown;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
+
+    // Build (label, value, color) tuples.
+    final palette = [
+      theme.colorScheme.primary,
+      theme.colorScheme.tertiary,
+      theme.colorScheme.secondary,
+      theme.colorScheme.error,
+      theme.colorScheme.primaryContainer,
+      theme.colorScheme.surfaceContainerHigh,
+      theme.colorScheme.onSurfaceVariant,
+    ];
+    final entries = <({String label, double value, Color color})>[
+      (label: l.yield_profitability_feed,        value: breakdown.feedCostPhp,        color: palette[0]),
+      (label: l.yield_profitability_medicine,    value: breakdown.medicineCostPhp,    color: palette[1]),
+      (label: l.yield_profitability_labor,       value: breakdown.laborCostPhp,       color: palette[2]),
+      (label: l.yield_profitability_utilities,   value: breakdown.utilitiesCostPhp,   color: palette[3]),
+      (label: l.yield_profitability_equipment,   value: breakdown.equipmentCostPhp,   color: palette[4]),
+      (label: l.yield_profitability_maintenance, value: breakdown.maintenanceCostPhp, color: palette[5]),
+      (label: l.yield_profitability_other,       value: breakdown.otherCostPhp,       color: palette[6]),
+    ].where((e) => e.value > 0).toList();
+
+    if (entries.isEmpty) {
+      return Center(child: Text(l.batch_profit_cost_no_costs,
+          style: theme.textTheme.bodyMedium));
+    }
+
+    final total = entries.fold<double>(0, (s, e) => s + e.value);
+    final sections = entries.map((e) {
+      final pct = e.value / total * 100;
+      return PieChartSectionData(
+        value: e.value,
+        color: e.color,
+        radius: 80,
+        // Only show percentage labels on slices ≥ 8% to avoid cramped text.
+        title: pct >= 8 ? '${pct.toStringAsFixed(0)}%' : '',
+        titleStyle: theme.textTheme.labelMedium?.copyWith(
+          color: Colors.white, fontWeight: FontWeight.w700,
+        ),
+      );
+    }).toList();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 220,
+          child: PieChart(PieChartData(sections: sections, centerSpaceRadius: 32)),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 16, runSpacing: 8,
+          children: entries.map((e) => _LegendRow(
+            color: e.color, label: e.label, value: e.value,
+          )).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendRow extends StatelessWidget {
+  const _LegendRow({required this.color, required this.label, required this.value});
+  final Color color;
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 12, height: 12, decoration: BoxDecoration(
+          color: color, borderRadius: BorderRadius.circular(3))),
+        const SizedBox(width: 8),
+        Text(label, style: theme.textTheme.bodyMedium),
+        const SizedBox(width: 4),
+        Text(formatCurrencyPhp(context, value),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            )),
+      ],
+    );
+  }
+}
+```
+
+Add imports at top of file (if not already):
+
+```dart
+import 'package:farm_app/src/core/i18n/intl_helpers.dart';
+import 'package:farm_app/src/l10n/generated/app_localizations.dart';
+```
+
+The screen's parent widget that mounted `_CostPie` inside a `SizedBox(height: 220)` — change that wrapper to not constrain height (the new `_CostPie` builds its own structure):
+
+```dart
+// Was:
+SizedBox(height: 220, child: _CostPie(breakdown: p))
+// Becomes:
+_CostPie(breakdown: p)
+```
+
+- [ ] **Step 14.3: Run + manual verify**
+
+```bash
+flutter analyze && flutter test
+```
+Expected: 0 issues, 158 tests pass (no test count change).
+
+Manual smoke: navigate to Batch Profitability for a batch with varied cost categories. Verify the pie shows percentages on big slices only and the legend below has readable labels and currency values.
+
+- [ ] **Step 14.4: Commit**
+
+```bash
+git add -A
+git commit -m "feat(profitability): pie chart side legend with localized labels
+
+- Move category labels from in-slice text to a side legend
+- Show percentages on slices ≥ 8%; small slices stay clean
+- Legend rows: color square + label + formatted PHP currency
+- Theme-token colors throughout"
+```
+
+---
+
+## Task 15: Perf audit + obvious-win fixes
+
+**Goal:** Profile the app on a target low-end Android device class. Document findings in a perf audit doc. Apply obvious-win fixes (missing `const`, `RepaintBoundary`, Riverpod `select`).
+
+**Files:**
+- Create: `docs/superpowers/perf-audit-2026-05-15.md`
+- Modify: `analysis_options.yaml`, plus any files touched by the fixes.
+
+### Steps
+
+- [ ] **Step 15.1: Enable `prefer_const_constructors` lint**
+
+Edit `analysis_options.yaml`. Under `linter: rules:`, add:
+
+```yaml
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_const_constructors_in_immutables: true
+    prefer_const_literals_to_create_immutables: true
+```
+
+Run:
+```bash
+flutter analyze
+```
+
+Expected: a flurry of `prefer_const_constructors` warnings. Note the count.
+
+- [ ] **Step 15.2: Auto-fix const where possible**
+
+Run Dart's auto-fix:
+```bash
+dart fix --apply
+```
+
+Re-run analyze; expect most const warnings auto-resolved. Manually fix any remaining (typically these involve constructors that aren't `const`-capable due to non-const arguments — leave them alone).
+
+- [ ] **Step 15.3: Run profile build**
+
+Start a profile run on a low-end Android emulator. If a real device is available, prefer that.
+
+```bash
+flutter run --profile -d <device-id>
+```
+
+While the app runs, attach Flutter DevTools:
+```bash
+flutter pub global activate devtools
+flutter pub global run devtools
+```
+
+Open Performance tab. Record three traces:
+1. **Cold start to dashboard**: kill app, launch, navigate to dashboard.
+2. **Pigs list scroll**: scroll through a list of 50+ pigs (seed if needed).
+3. **Batch Profitability render**: open the per-batch P&L screen.
+
+- [ ] **Step 15.4: Identify obvious offenders**
+
+In DevTools Performance, look for:
+- Frames > 16ms on UI thread (jank).
+- Frames > 16ms on raster thread (chart-heavy screens).
+- Widgets rebuilding more than expected (the "rebuild" inspector).
+
+Common offenders to fix:
+- A `Column` of `Card`s without `RepaintBoundary` — wrap each Card in RepaintBoundary when the list is long.
+- A `ConsumerWidget` watching a large stream provider when it only needs one field — use `select`.
+- Repeated `Image.network(...)` calls instead of `CachedNetworkImage` — convert.
+
+- [ ] **Step 15.5: Apply RepaintBoundary fixes**
+
+For each chart and any long-scroll list-card, wrap in `RepaintBoundary`. Example:
+
+```dart
+// Yield reports mortality bar chart:
+SizedBox(height: 180, child: RepaintBoundary(child: _AreaBarChart(byArea: m.byArea)))
+
+// Batch profit pie chart parent:
+RepaintBoundary(child: _CostPie(breakdown: p))
+
+// Activity feed entries (if scrolling):
+return RepaintBoundary(child: Card(child: ListTile(...)));
+```
+
+- [ ] **Step 15.6: Apply `ref.watch(select)` where appropriate**
+
+In screens that watch a wide provider but only need a small slice, replace:
+
+```dart
+final farm = ref.watch(selectedFarmProvider).asData?.value;
+final name = farm?.name ?? '';
+```
+
+with:
+
+```dart
+final name = ref.watch(selectedFarmProvider.select((async) =>
+    async.asData?.value?.name ?? ''));
+```
+
+Identify 2–4 such opportunities from the profile run (don't speculatively refactor — only fix what the profiler flagged).
+
+- [ ] **Step 15.7: Verify `cached_network_image` everywhere**
+
+```bash
+grep -rn "Image\\.network" lib/src/
+```
+
+Expected: zero hits or only inside `CachedNetworkImage`'s implementation if any. Replace any remaining `Image.network(...)` calls with `CachedNetworkImage(...)`.
+
+- [ ] **Step 15.8: Write the perf audit doc**
+
+Create `docs/superpowers/perf-audit-2026-05-15.md`:
+
+```markdown
+# Performance Audit — 2026-05-15
+
+**Branch:** `feature/swine-crm-foundation`
+**Device class:** Android 11 emulator @ 2GB RAM (substitute real device if available).
+**Build mode:** profile.
+
+## Baseline measurements
+
+| Metric | Baseline | Notes |
+|---|---|---|
+| Cold start → Dashboard | <fill in> ms | from `flutter run --profile -d ...` start to first interactive frame |
+| Pigs list 60-frame scroll | mean: <fill> ms / 99p: <fill> ms | seeded with 50 pigs |
+| Batch P&L first paint | <fill> ms | 1 batch with 4 cost categories |
+| Memory after navigating every screen | <fill> MB | RSS via DevTools |
+
+## Findings
+
+(Fill in observed issues from DevTools.)
+
+1. **<offender 1>**: ...
+2. **<offender 2>**: ...
+3. ...
+
+## Fixes applied in slice 15
+
+- Enabled `prefer_const_constructors` lint; ran `dart fix --apply`.
+- Added `RepaintBoundary` around `_CostPie`, `_AreaBarChart`, activity feed cards.
+- Migrated 3 screens to `ref.watch(provider.select((x) => …))` patterns (yield screen, dashboard, pig detail).
+- Verified all photo rendering goes through `cached_network_image`.
+
+## Post-fix measurements
+
+| Metric | Post-fix | Δ from baseline |
+|---|---|---|
+| Cold start → Dashboard | <fill> ms | -X% |
+| Pigs list 60-frame scroll | mean: <fill> ms / 99p: <fill> ms | -Y% |
+| Batch P&L first paint | <fill> ms | -Z% |
+
+## Open follow-ups (not in this slice)
+
+- ...
+```
+
+The implementer fills in the actual numbers after running the profile builds.
+
+- [ ] **Step 15.9: Append Sub-project C smoke checklist**
+
+Append to `docs/superpowers/manual-smoke-checklist.md`:
+
+```markdown
+## Sub-project C — Bilingual & Polish
+
+### i18n
+- [ ] Set device language to Filipino. Cold-launch app — every primary screen renders in Tagalog. No `?key_name?` placeholders anywhere.
+- [ ] Settings → Language → English. App immediately switches to English; persists across restart.
+- [ ] Settings → Language → Filipino on an English phone. App switches to Tagalog; persists.
+- [ ] Settings → Language → System. App reverts to OS locale.
+- [ ] Numbers: `₱48,000` renders identically in en + fil. Dates: "May 15, 2026" (en) / "Mayo 15, 2026" (fil).
+- [ ] Plural: 1 pig / 12 pigs (en); 1 baboy / 12 baboy (fil).
+
+### Polish — Activity on update
+- [ ] Edit a pig's name → Activity feed shows "pig_updated" entry.
+- [ ] Edit equipment status via dedicated edit screen (not quick-toggle) → "equipment_updated" entry.
+- [ ] Edit a supply's threshold → "supply_updated" entry.
+
+### Polish — UserDisplay
+- [ ] Workers see real display names (not Firebase UIDs) in:
+  - Shift worker chips (Edit shift screen)
+  - Roster widget on dashboard
+  - Task assignment dropdown (Create task)
+  - Task card "assigned to" subtitle
+
+### Polish — Photo upload errors
+- [ ] Toggle airplane mode mid-photo-upload → SnackBar "Couldn't upload photo. Will retry when online." within 2 seconds.
+- [ ] (If feasible) Simulate permission-denied → SnackBar "Couldn't upload photo: permission-denied." Queue does NOT retain this entry on next flush.
+
+### Polish — Pie chart legend
+- [ ] Open Batch Profitability for a batch with multiple cost categories.
+- [ ] Pie shows percentages only on slices ≥ 8%; smaller slices have no in-slice text.
+- [ ] Below the pie, a legend with color squares, category labels, and currency values is readable.
+
+### Perf
+- [ ] App cold-starts on the target device in a "feels acceptable" time (record actual number in perf-audit doc).
+- [ ] Scrolling the Pigs list on a 50-pig seed feels smooth.
+- [ ] Batch P&L screen with charts renders without visible lag.
+- [ ] No `Image.network` warnings; all images go through `cached_network_image`.
+```
+
+- [ ] **Step 15.10: Final run + commit**
+
+```bash
+flutter analyze && flutter test
+```
+Expected: 0 issues, 158 tests pass.
+
+```bash
+git add -A
+git commit -m "feat(perf,docs): perf audit findings + obvious-win fixes
+
+- Enable prefer_const_constructors lints; dart fix --apply
+- Add RepaintBoundary around charts and activity feed cards
+- Migrate 3 screens to ref.watch(select) for narrower rebuild scope
+- Verify cached_network_image everywhere
+- docs/superpowers/perf-audit-2026-05-15.md: baseline + post-fix
+- Manual smoke checklist appended for Sub-project C"
+```
+
+---
+
+## Final verification
+
+After all 15 tasks are complete:
+
+- [ ] **`flutter analyze`** — must be 0 issues with the new const lints enabled.
+- [ ] **`flutter test`** — all tests pass. Expected count: 140 (post-B baseline) + 9 new (4 locale, 3 intl helpers, 3 update* activity entries, 2 user display, 6 photo upload error — actually some of those are bundled in single test files, so the count ranges between 149 and 158 depending on how the implementer structures them).
+- [ ] **Manual smoke checklist** — every Sub-project C checkbox passes.
+- [ ] **Spec §13 success criteria** — every numbered criterion is demonstrably true.
+- [ ] Tag the branch: `git tag sub-project-C` and push.
+
+---
+
+## Notes for the executing engineer
+
+- **`AppLocalizations` regeneration**: `flutter pub get` is the regen trigger (since `flutter.generate: true` is set). If the IDE / build complains about a missing key, check that `app_en.arb` has it and that the generated file refreshed.
+- **Keys not yet in fil**: the generator will tolerate missing FIL keys but the app will fall back to the EN value. Run the parity check in Task 10.1 frequently.
+- **ARB ICU plural format quirks**: variable references inside the message use `{name}`; the `=0`, `=1`, `other` branches go inside the plural tag. Trailing commas matter. If something breaks, post the exact JSON snippet in a follow-up message rather than guessing.
+- **Tests and locale**: by default, `MaterialApp` in tests has no `localizationsDelegates`. If a widget test needs to render localized text, pass the delegates as shown in `intl_helpers_test.dart`.
+- **Domain-layer enum-to-label helpers** introduced in Tasks 5–9: keep these as **top-level functions** in the respective domain files (`pig.dart`, `supply_category.dart`, `expense_category.dart`, `payment_method.dart`, etc.). Don't make them extensions or methods on the enum — that ties the domain layer to the i18n layer.
+- **Perf audit fixes**: fix what the profiler points at. Speculative `RepaintBoundary` everywhere can actually slow things down. Measure, fix, re-measure.

@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
+import 'src/l10n/generated/app_localizations.dart';
 import 'src/routing/app_router.dart';
 import 'src/core/theme/main_theme.dart';
 
@@ -45,6 +47,13 @@ class MyApp extends ConsumerWidget {
       routerConfig: goRouter,
       title: 'Farm CRM',
       theme: mainTheme,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('en'), Locale('fil')],
     );
   }
 }

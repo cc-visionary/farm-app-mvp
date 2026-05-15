@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/activity_providers.dart';
 import '../domain/activity_entry.dart';
@@ -19,24 +20,26 @@ class ActivityScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
 
     final feedAsync = ref.watch(recentActivityProvider(farmId));
     final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).toString();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Activity')),
+      appBar: AppBar(title: Text(l.activity_screen_title)),
       body: feedAsync.when(
         data: (entries) {
           if (entries.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.activity,
-              title: 'No activity yet',
-              subtitle: 'Logged events will appear here.',
+              title: l.activity_feed_empty_title,
+              subtitle: l.activity_feed_empty_subtitle,
             );
           }
-          final groups = _groupByDay(entries);
+          final groups = _groupByDay(context, l, entries);
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             itemCount: groups.length,
@@ -82,7 +85,7 @@ class ActivityScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    DateFormat.jm()
+                                    DateFormat.jm(locale)
                                         .format(e.timestamp.toDate()),
                                     style: theme.textTheme.labelMedium
                                         ?.copyWith(
@@ -115,9 +118,14 @@ class ActivityScreen extends ConsumerWidget {
     );
   }
 
-  List<_DayGroup> _groupByDay(List<ActivityEntry> entries) {
+  List<_DayGroup> _groupByDay(
+    BuildContext context,
+    AppLocalizations l,
+    List<ActivityEntry> entries,
+  ) {
     final today = DateTime.now();
     final yesterday = today.subtract(const Duration(days: 1));
+    final locale = Localizations.localeOf(context).toString();
     bool sameDay(DateTime a, DateTime b) =>
         a.year == b.year && a.month == b.month && a.day == b.day;
 
@@ -126,11 +134,11 @@ class ActivityScreen extends ConsumerWidget {
       final t = e.timestamp.toDate();
       String label;
       if (sameDay(t, today)) {
-        label = 'Today';
+        label = l.activity_screen_today;
       } else if (sameDay(t, yesterday)) {
-        label = 'Yesterday';
+        label = l.activity_screen_yesterday;
       } else {
-        label = DateFormat.yMMMMd().format(t);
+        label = DateFormat.yMMMMd(locale).format(t);
       }
       groups.putIfAbsent(label, () => []).add(e);
     }

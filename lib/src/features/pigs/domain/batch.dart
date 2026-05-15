@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum BatchType {
   litter('litter', 'Litter'),
   growFinish('grow_finish', 'Grow-Finish'),
@@ -100,4 +102,28 @@ class Batch {
         'createdBy': createdBy,
         'createdAt': createdAt,
       };
+}
+
+/// Localized human label for a [BatchType].
+String localizedBatchType(AppLocalizations l, BatchType t) {
+  switch (t) {
+    case BatchType.litter:
+      return l.batch_type_litter;
+    case BatchType.growFinish:
+      return l.batch_type_grow_finish;
+    case BatchType.nursery:
+      return l.batch_type_nursery;
+  }
+}
+
+/// Localized human label for a [BatchStatus].
+String localizedBatchStatus(AppLocalizations l, BatchStatus s) {
+  switch (s) {
+    case BatchStatus.active:
+      return l.batch_status_active;
+    case BatchStatus.sold:
+      return l.batch_status_sold;
+    case BatchStatus.closed:
+      return l.batch_status_closed;
+  }
 }

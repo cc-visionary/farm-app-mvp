@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/i18n/intl_helpers.dart';
 import '../../core/widgets/section_header.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../activity/presentation/activity_feed_widget.dart';
 import '../authentication/application/auth_providers.dart';
+import '../authentication/domain/user_model.dart';
 import '../farms/application/farm_providers.dart';
 import '../farms/presentation/farm_switcher.dart';
 import '../shifts/presentation/roster_widget.dart';
@@ -14,21 +16,30 @@ import '../tasks/application/task_providers.dart';
 import '../tasks/domain/task.dart';
 import 'snapshot_card.dart';
 
+/// Time-of-day-aware greeting. Falls back to the no-name variants when the
+/// user has no display name yet (right after sign-up).
+String greeting(AppLocalizations l, AppUser? user) {
+  final hour = DateTime.now().hour;
+  final name = user?.displayName;
+  if (name == null || name.trim().isEmpty) {
+    if (hour < 12) return l.dashboard_greeting_no_name_morning;
+    if (hour < 18) return l.dashboard_greeting_no_name_afternoon;
+    return l.dashboard_greeting_no_name_evening;
+  }
+  if (hour < 12) return l.dashboard_greeting_morning(name);
+  if (hour < 18) return l.dashboard_greeting_afternoon(name);
+  return l.dashboard_greeting_evening(name);
+}
+
 /// Authenticated home screen. Aggregates the most important at-a-glance
 /// widgets so a worker landing in the app can see what to do today without
 /// hunting through menus.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  String _greeting(DateTime now) {
-    final h = now.hour;
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     final appUser = ref.watch(currentAppUserProvider).asData?.value;
@@ -51,10 +62,7 @@ class DashboardScreen extends ConsumerWidget {
     );
 
     final now = DateTime.now();
-    final displayName = appUser?.displayName;
-    final greetingText = displayName == null || displayName.isEmpty
-        ? _greeting(now)
-        : '${_greeting(now)}, $displayName';
+    final greetingText = greeting(l, appUser);
 
     return Scaffold(
       appBar: AppBar(
@@ -80,7 +88,7 @@ class DashboardScreen extends ConsumerWidget {
                   border: Border.all(color: theme.colorScheme.outline),
                 ),
                 child: Text(
-                  DateFormat.MMMd().format(now),
+                  formatMediumDate(context, now),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -105,7 +113,7 @@ class DashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              DateFormat.yMMMMEEEEd().format(now),
+              l.dashboard_today_label(formatMediumDate(context, now)),
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -139,6 +147,7 @@ class _MyTasksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     if (tasks.isEmpty) {
       return Card(
@@ -147,9 +156,9 @@ class _MyTasksCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionHeader(
-                title: 'Your tasks today',
-                padding: EdgeInsets.only(bottom: 8),
+              SectionHeader(
+                title: l.dashboard_my_tasks_title,
+                padding: const EdgeInsets.only(bottom: 8),
               ),
               const Divider(height: 1),
               const SizedBox(height: 8),
@@ -165,7 +174,7 @@ class _MyTasksCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'No tasks assigned to you.',
+                        l.dashboard_my_tasks_empty,
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),
@@ -185,9 +194,9 @@ class _MyTasksCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionHeader(
-              title: 'Your tasks today',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.dashboard_my_tasks_title,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             const Divider(height: 1),
             const SizedBox(height: 4),
@@ -223,7 +232,7 @@ class _MyTasksCard extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              DateFormat.yMMMd().format(due),
+                              formatMediumDate(context, due),
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: color,
                               ),
@@ -241,7 +250,7 @@ class _MyTasksCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => GoRouter.of(context).push('/tasks'),
-                child: const Text('See all tasks'),
+                child: Text(l.dashboard_my_tasks_see_all),
               ),
             ),
           ],

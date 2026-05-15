@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/i18n/intl_helpers.dart';
 import '../../core/permissions/permission_service.dart';
 import '../../core/permissions/role.dart';
 import '../../core/widgets/section_header.dart';
 import '../../core/widgets/stat_tile.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../authentication/application/auth_providers.dart';
 import '../farms/application/farm_providers.dart';
 import '../inventory/application/inventory_providers.dart';
@@ -24,6 +25,7 @@ class SnapshotCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
 
@@ -78,55 +80,52 @@ class SnapshotCard extends ConsumerWidget {
     final lowStockCount =
         supplies.where((s) => s.isLowStock || s.isOutOfStock).length;
 
-    final revenueFormatter = NumberFormat.decimalPattern('en_PH');
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionHeader(
-              title: 'Swine snapshot',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.snapshot_section_title,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             const Divider(height: 1),
             const SizedBox(height: 4),
             StatTile(
-              label: 'Total pigs (active)',
+              label: l.snapshot_total_pigs,
               value: active.length.toString(),
               icon: Iconsax.pet,
             ),
             StatTile(
-              label: 'Sows',
+              label: l.snapshot_sows,
               value: sows.toString(),
               icon: Iconsax.heart,
             ),
             StatTile(
-              label: 'Boars',
+              label: l.snapshot_boars,
               value: boars.toString(),
               icon: Iconsax.heart,
             ),
             StatTile(
-              label: 'Farrowings (last 30d)',
+              label: l.snapshot_farrowings_30d,
               value: recentFarr.toString(),
               icon: Icons.child_friendly,
             ),
             StatTile(
-              label: 'Mortalities (last 30d)',
+              label: l.snapshot_mortalities_30d,
               value: recentMort.toString(),
               icon: Icons.heart_broken,
             ),
             if (canSeeFinance)
               StatTile(
                 icon: Iconsax.money_recive,
-                label: 'Revenue this month',
-                value:
-                    '₱${revenueFormatter.format(revenueThisMonth.round())}',
+                label: l.snapshot_revenue_month,
+                value: formatCurrencyPhp(context, revenueThisMonth.round()),
               ),
             StatTile(
               icon: Iconsax.box,
-              label: 'Low stock items',
+              label: l.snapshot_low_stock,
               value: lowStockCount.toString(),
             ),
           ],

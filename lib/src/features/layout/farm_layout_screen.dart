@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 
 import '../../core/widgets/empty_state.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../areas/application/area_providers.dart';
 import '../areas/domain/area.dart';
 import '../areas/domain/pen.dart';
@@ -52,6 +53,7 @@ class FarmLayoutScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -73,7 +75,7 @@ class FarmLayoutScreen extends ConsumerWidget {
         .watch(shiftsForDateProvider((farmId: farmId, date: DateTime.now())));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Farm layout')),
+      appBar: AppBar(title: Text(l.farm_layout_title)),
       body: areas.isEmpty
           ? const EmptyState(
               icon: Iconsax.element_3,
@@ -141,7 +143,10 @@ class FarmLayoutScreen extends ConsumerWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '$areaPigs / ${cap ?? "—"} pigs',
+                              l.farm_layout_pigs_label(
+                                areaPigs,
+                                cap == null ? ' / —' : ' / $cap',
+                              ),
                               style: textTheme.bodyMedium,
                             ),
                           ],
@@ -157,7 +162,11 @@ class FarmLayoutScreen extends ConsumerWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '$taskCount pending task${taskCount == 1 ? "" : "s"}',
+                                taskCount == 1
+                                    ? l.farm_layout_pending_tasks_one
+                                    : l.farm_layout_pending_tasks_many(
+                                        taskCount,
+                                      ),
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: colorScheme.tertiary,
                                   fontWeight: FontWeight.w600,
@@ -169,7 +178,7 @@ class FarmLayoutScreen extends ConsumerWidget {
                         if (areaPens.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Text(
-                            'PENS',
+                            l.farm_layout_pens_label.toUpperCase(),
                             style: textTheme.labelMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
@@ -221,7 +230,7 @@ class FarmLayoutScreen extends ConsumerWidget {
                         if (areaEq.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           Text(
-                            'EQUIPMENT',
+                            l.farm_layout_equipment_label.toUpperCase(),
                             style: textTheme.labelMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
@@ -277,7 +286,7 @@ class FarmLayoutScreen extends ConsumerWidget {
                           Row(
                             children: [
                               Text(
-                                'ON SHIFT',
+                                l.farm_layout_on_shift_label.toUpperCase(),
                                 style: textTheme.labelMedium?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
                                   fontWeight: FontWeight.w700,

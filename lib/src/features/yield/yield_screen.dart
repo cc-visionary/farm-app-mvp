@@ -2,10 +2,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
+import '../../core/i18n/intl_helpers.dart';
 import '../../core/permissions/permission_service.dart';
 import '../../core/permissions/role.dart';
 import '../../core/widgets/section_header.dart';
 import '../../core/widgets/stat_tile.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../authentication/application/auth_providers.dart';
 import '../farms/application/farm_providers.dart';
 import '../profitability/application/profitability_providers.dart';
@@ -14,11 +16,28 @@ import '../team/application/team_providers.dart';
 import 'yield_metrics.dart';
 import 'yield_providers.dart';
 
+/// Localized label for a [YieldPeriod] choice chip.
+String _periodLabel(AppLocalizations l, YieldPeriod p) {
+  switch (p) {
+    case YieldPeriod.d7:
+      return l.yield_period_7d;
+    case YieldPeriod.d30:
+      return l.yield_period_30d;
+    case YieldPeriod.d90:
+      return l.yield_period_90d;
+    case YieldPeriod.ytd:
+      return l.yield_period_ytd;
+    case YieldPeriod.all:
+      return l.yield_period_all;
+  }
+}
+
 class YieldScreen extends ConsumerWidget {
   const YieldScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -44,18 +63,18 @@ class YieldScreen extends ConsumerWidget {
     final canSeeProfit = PermissionService.canEditEquipment(role);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Yield reports')),
+      appBar: AppBar(title: Text(l.yield_title)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
-          const SectionHeader(title: 'Period'),
+          SectionHeader(title: l.yield_section_period),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: YieldPeriod.values
                 .map(
                   (p) => ChoiceChip(
-                    label: Text(p.label),
+                    label: Text(_periodLabel(l, p)),
                     selected: period == p,
                     onSelected: (_) =>
                         ref.read(selectedPeriodProvider.notifier).state = p,
@@ -63,7 +82,7 @@ class YieldScreen extends ConsumerWidget {
                 )
                 .toList(),
           ),
-          const SectionHeader(title: 'Herd productivity'),
+          SectionHeader(title: l.yield_card_herd),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -71,34 +90,34 @@ class YieldScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   StatTile(
-                    label: 'Total farrowings',
+                    label: l.yield_card_herd_total_farrowings,
                     value: hp.totalFarrowings.toString(),
                   ),
                   StatTile(
-                    label: 'Avg litter size',
+                    label: l.yield_card_herd_avg_litter,
                     value: hp.avgLitterSize.toStringAsFixed(1),
                   ),
                   StatTile(
-                    label: 'Avg stillborns / litter',
+                    label: l.yield_card_herd_avg_stillborns,
                     value: hp.avgStillborns.toStringAsFixed(1),
                   ),
                   StatTile(
-                    label: 'Stillbirth rate',
+                    label: l.yield_card_herd_stillbirth_rate,
                     value: _pct(hp.stillbirthRate),
                   ),
                   StatTile(
-                    label: 'Breeding success rate',
+                    label: l.yield_card_herd_breeding_success,
                     value: _pct(hp.breedingSuccessRate),
                   ),
                   StatTile(
-                    label: 'PSY (annualized)',
+                    label: l.yield_card_herd_psy,
                     value: hp.psyEstimate.toStringAsFixed(1),
                   ),
                 ],
               ),
             ),
           ),
-          const SectionHeader(title: 'Growth & finishing'),
+          SectionHeader(title: l.yield_card_growth),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -106,18 +125,20 @@ class YieldScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   StatTile(
-                    label: 'Active grow/finish pigs',
+                    label: l.yield_card_growth_active_gf,
                     value: g.activeGrowFinishCount.toString(),
                   ),
                   StatTile(
-                    label: 'Average daily gain',
-                    value: '${g.avgDailyGainKg.toStringAsFixed(2)} kg/d',
+                    label: l.yield_card_growth_adg,
+                    value: l.yield_card_growth_adg_value(
+                      g.avgDailyGainKg.toStringAsFixed(2),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          const SectionHeader(title: 'Mortality'),
+          SectionHeader(title: l.yield_card_mortality),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -125,17 +146,17 @@ class YieldScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   StatTile(
-                    label: 'Total deaths (period)',
+                    label: l.yield_card_mortality_total,
                     value: m.totalDeaths.toString(),
                   ),
                   StatTile(
-                    label: 'Overall mortality rate',
+                    label: l.yield_card_mortality_rate,
                     value: _pct(m.overallMortalityRate),
                   ),
                   if (m.topCauses.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(
-                      'TOP CAUSES',
+                      l.yield_card_mortality_top_causes,
                       style: textTheme.labelMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
@@ -165,7 +186,7 @@ class YieldScreen extends ConsumerWidget {
                   if (m.byArea.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(
-                      'BY AREA',
+                      l.yield_card_mortality_by_area,
                       style: textTheme.labelMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
@@ -182,18 +203,24 @@ class YieldScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SectionHeader(title: 'Output'),
+          SectionHeader(title: l.yield_card_output),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  StatTile(label: 'Sold', value: o.sold.toString()),
-                  StatTile(label: 'Culled', value: o.culled.toString()),
+                  StatTile(
+                    label: l.yield_card_output_sold,
+                    value: o.sold.toString(),
+                  ),
+                  StatTile(
+                    label: l.yield_card_output_culled,
+                    value: o.culled.toString(),
+                  ),
                   const SizedBox(height: 12),
                   Text(
-                    'Sales revenue tracking comes in Sub-project B.',
+                    l.yield_card_output_b_note,
                     style: textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -202,13 +229,13 @@ class YieldScreen extends ConsumerWidget {
               ),
             ),
           ),
-          if (canSeeProfit) const SectionHeader(title: 'Profitability'),
+          if (canSeeProfit) SectionHeader(title: l.yield_profitability_title),
           if (canSeeProfit) _ProfitabilityCard(farmId: farmId),
           if (canSeeProfit) const SizedBox(height: 12),
           if (canSeeProfit)
             OutlinedButton.icon(
               icon: const Icon(Iconsax.box),
-              label: const Text('View per-batch profitability'),
+              label: Text(l.yield_view_per_batch_button),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -312,11 +339,13 @@ class _ProfitabilityCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final r = ref.watch(profitabilityForPeriodProvider(farmId));
     final profitColor = r.grossProfitPhp >= 0
         ? theme.colorScheme.primary
         : theme.colorScheme.error;
+    final sign = r.grossProfitPhp >= 0 ? '' : '−';
 
     return Card(
       child: Padding(
@@ -324,24 +353,41 @@ class _ProfitabilityCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Profitability', style: theme.textTheme.headlineSmall),
+            Text(
+              l.yield_profitability_title,
+              style: theme.textTheme.headlineSmall,
+            ),
             const Divider(),
-            _line(theme, 'Revenue', r.revenuePhp),
+            _line(context, theme, l.yield_profitability_revenue, r.revenuePhp),
             const SizedBox(height: 4),
-            _line(theme, 'Feed', r.feedCostPhp, expense: true),
-            _line(theme, 'Medicine', r.medicineCostPhp, expense: true),
-            _line(theme, 'Labor', r.laborCostPhp, expense: true),
-            _line(theme, 'Utilities', r.utilitiesCostPhp, expense: true),
-            _line(theme, 'Equipment', r.equipmentCostPhp, expense: true),
-            _line(theme, 'Maintenance', r.maintenanceCostPhp, expense: true),
-            _line(theme, 'Other', r.otherCostPhp, expense: true),
+            _line(context, theme, l.yield_profitability_feed, r.feedCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_medicine,
+                r.medicineCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_labor, r.laborCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_utilities,
+                r.utilitiesCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_equipment,
+                r.equipmentCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_maintenance,
+                r.maintenanceCostPhp,
+                expense: true),
+            _line(context, theme, l.yield_profitability_other, r.otherCostPhp,
+                expense: true),
             const Divider(),
             Row(
               children: [
-                Text('Gross profit', style: theme.textTheme.titleMedium),
+                Text(
+                  l.yield_profitability_gross_profit,
+                  style: theme.textTheme.titleMedium,
+                ),
                 const Spacer(),
                 Text(
-                  '${r.grossProfitPhp >= 0 ? "" : "−"}₱${r.grossProfitPhp.abs().toStringAsFixed(0)}',
+                  '$sign${formatCurrencyPhp(context, r.grossProfitPhp.abs())}',
                   style: theme.textTheme.headlineMedium?.copyWith(
                     color: profitColor,
                     fontWeight: FontWeight.w700,
@@ -360,7 +406,7 @@ class _ProfitabilityCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${r.marginPct.toStringAsFixed(1)}% margin',
+                  l.yield_profitability_margin(r.marginPct.toStringAsFixed(1)),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: profitColor,
                     fontWeight: FontWeight.w700,
@@ -375,11 +421,13 @@ class _ProfitabilityCard extends ConsumerWidget {
   }
 
   Widget _line(
+    BuildContext context,
     ThemeData theme,
     String label,
     double value, {
     bool expense = false,
   }) {
+    final sign = expense ? '−' : '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -387,7 +435,7 @@ class _ProfitabilityCard extends ConsumerWidget {
           Text(label, style: theme.textTheme.bodyMedium),
           const Spacer(),
           Text(
-            '${expense ? "−" : ""}₱${value.toStringAsFixed(0)}',
+            '$sign${formatCurrencyPhp(context, value)}',
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w600,
               color: expense ? theme.colorScheme.onSurfaceVariant : null,

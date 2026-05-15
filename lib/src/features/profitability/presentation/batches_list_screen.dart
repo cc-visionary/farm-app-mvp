@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 
 import '../../../core/widgets/empty_state.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../pigs/application/pig_providers.dart';
 import '../../pigs/domain/batch.dart';
@@ -18,21 +19,21 @@ class BatchesListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final batchesAsync = ref.watch(batchesStreamProvider(farmId));
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Batches')),
+      appBar: AppBar(title: Text(l.batches_list_title)),
       body: batchesAsync.when(
         data: (list) {
           if (list.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.element_3,
-              title: 'No batches yet',
-              subtitle:
-                  'Litter or grow-finish batches will appear here once created.',
+              title: l.batches_list_empty_title,
+              subtitle: l.batches_list_empty_subtitle,
             );
           }
           return ListView.builder(
@@ -40,13 +41,15 @@ class BatchesListScreen extends ConsumerWidget {
             itemCount: list.length,
             itemBuilder: (_, i) {
               final b = list[i];
+              final base =
+                  l.batch_card_subtitle(localizedBatchType(l, b.type), b.count);
+              final subtitle = b.status == BatchStatus.active
+                  ? base
+                  : '$base · ${localizedBatchStatus(l, b.status)}';
               return Card(
                 child: ListTile(
                   title: Text(b.name, style: theme.textTheme.titleMedium),
-                  subtitle: Text(
-                    '${b.type.label} · ${b.count} head'
-                    '${b.status == BatchStatus.active ? "" : " · ${b.status.value}"}',
-                  ),
+                  subtitle: Text(subtitle),
                   trailing: const Icon(Iconsax.arrow_right_3),
                   onTap: () => Navigator.push(
                     context,

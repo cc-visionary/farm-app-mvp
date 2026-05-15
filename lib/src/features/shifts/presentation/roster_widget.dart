@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/shift_providers.dart';
@@ -12,6 +13,7 @@ class RosterWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -27,12 +29,12 @@ class RosterWidget extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SectionHeader(title: "Today's roster"),
+          SectionHeader(title: l.roster_today_title),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'No shifts scheduled today.',
+                l.roster_no_shifts_today,
                 style: textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -52,7 +54,7 @@ class RosterWidget extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader(title: "Today's roster"),
+        SectionHeader(title: l.roster_today_title),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

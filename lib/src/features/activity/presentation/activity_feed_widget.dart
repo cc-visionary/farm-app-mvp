@@ -5,6 +5,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/activity_providers.dart';
 import '../domain/activity_entry.dart';
@@ -21,6 +22,7 @@ class ActivityFeedWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
 
@@ -37,7 +39,7 @@ class ActivityFeedWidget extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionHeader(
-                  title: 'Recent activity',
+                  title: l.activity_feed_title,
                   padding: const EdgeInsets.only(bottom: 8),
                   trailing: TextButton(
                     onPressed: () => GoRouter.of(context).push('/activity'),
@@ -49,7 +51,7 @@ class ActivityFeedWidget extends ConsumerWidget {
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text('See all'),
+                    child: Text(l.activity_feed_see_all),
                   ),
                 ),
                 const Divider(height: 1),
@@ -66,12 +68,12 @@ class ActivityFeedWidget extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'No activity yet',
+                            l.activity_feed_empty_title,
                             style: theme.textTheme.titleMedium,
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Logged events will appear here.',
+                            l.activity_feed_empty_subtitle,
                             style: theme.textTheme.bodyMedium,
                           ),
                         ],
@@ -107,6 +109,7 @@ class ActivityFeedWidget extends ConsumerWidget {
   }
 
   Widget _row(BuildContext context, ActivityEntry e) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final initial = e.actorDisplayName.isEmpty ? '?' : e.actorDisplayName[0];
     return Padding(
@@ -135,7 +138,7 @@ class ActivityFeedWidget extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            _relative(e.timestamp.toDate()),
+            _relative(context, l, e.timestamp.toDate()),
             style: theme.textTheme.labelMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -145,12 +148,14 @@ class ActivityFeedWidget extends ConsumerWidget {
     );
   }
 
-  String _relative(DateTime t) {
+  String _relative(BuildContext context, AppLocalizations l, DateTime t) {
     final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m';
-    if (d.inHours < 24) return '${d.inHours}h';
-    if (d.inDays < 7) return '${d.inDays}d';
-    return DateFormat.MMMd().format(t);
+    if (d.inMinutes < 1) return l.activity_screen_just_now;
+    if (d.inMinutes < 60) return l.activity_time_minutes(d.inMinutes);
+    if (d.inHours < 24) return l.activity_time_hours(d.inHours);
+    if (d.inDays < 7) return l.activity_time_days(d.inDays);
+    return DateFormat.MMMd(
+      Localizations.localeOf(context).toString(),
+    ).format(t);
   }
 }

@@ -8,7 +8,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../expenses/application/expense_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../inventory/application/inventory_providers.dart';
@@ -27,6 +29,7 @@ class BatchProfitabilityScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
@@ -36,7 +39,7 @@ class BatchProfitabilityScreen extends ConsumerWidget {
             const <Batch>[];
     if (batches.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Batch')),
+        appBar: AppBar(title: Text(l.batches_list_title)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -99,6 +102,8 @@ class BatchProfitabilityScreen extends ConsumerWidget {
         ? theme.colorScheme.primary
         : theme.colorScheme.error;
 
+    final sign = p.grossProfitPhp >= 0 ? '' : '−';
+
     return Scaffold(
       appBar: AppBar(title: Text(batch.name)),
       body: ListView(
@@ -111,16 +116,22 @@ class BatchProfitabilityScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${batch.type.label} · ${batch.count} head',
+                    l.batch_card_subtitle(
+                      localizedBatchType(l, batch.type),
+                      batch.count,
+                    ),
                     style: theme.textTheme.bodyMedium,
                   ),
                   const Divider(),
                   Row(
                     children: [
-                      Text('Revenue', style: theme.textTheme.bodyMedium),
+                      Text(
+                        l.batch_profit_revenue,
+                        style: theme.textTheme.bodyMedium,
+                      ),
                       const Spacer(),
                       Text(
-                        '₱${p.revenuePhp.toStringAsFixed(0)}',
+                        formatCurrencyPhp(context, p.revenuePhp),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -129,10 +140,13 @@ class BatchProfitabilityScreen extends ConsumerWidget {
                   ),
                   Row(
                     children: [
-                      Text('Total cost', style: theme.textTheme.bodyMedium),
+                      Text(
+                        l.batch_profit_total_cost,
+                        style: theme.textTheme.bodyMedium,
+                      ),
                       const Spacer(),
                       Text(
-                        '₱${p.totalCostPhp.toStringAsFixed(0)}',
+                        formatCurrencyPhp(context, p.totalCostPhp),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                           color: theme.colorScheme.onSurfaceVariant,
@@ -143,11 +157,13 @@ class BatchProfitabilityScreen extends ConsumerWidget {
                   const Divider(),
                   Row(
                     children: [
-                      Text('Gross profit',
-                          style: theme.textTheme.titleMedium),
+                      Text(
+                        l.batch_profit_gross_profit,
+                        style: theme.textTheme.titleMedium,
+                      ),
                       const Spacer(),
                       Text(
-                        '${p.grossProfitPhp >= 0 ? "" : "−"}₱${p.grossProfitPhp.abs().toStringAsFixed(0)}',
+                        '$sign${formatCurrencyPhp(context, p.grossProfitPhp.abs())}',
                         style: theme.textTheme.headlineMedium?.copyWith(
                           color: profitColor,
                           fontWeight: FontWeight.w700,
@@ -157,7 +173,9 @@ class BatchProfitabilityScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${p.marginPct.toStringAsFixed(1)}% margin',
+                    l.yield_profitability_margin(
+                      p.marginPct.toStringAsFixed(1),
+                    ),
                     style: theme.textTheme.labelMedium
                         ?.copyWith(color: profitColor),
                   ),
@@ -165,7 +183,7 @@ class BatchProfitabilityScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SectionHeader(title: 'Cost breakdown'),
+          SectionHeader(title: l.batch_profit_cost_breakdown),
           SizedBox(
             height: 220,
             child: _CostPie(breakdown: p),
@@ -182,6 +200,7 @@ class _CostPie extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final sections = <PieChartSectionData>[];
     void add(String label, double v, Color c) {
@@ -208,18 +227,21 @@ class _CostPie extends StatelessWidget {
       theme.colorScheme.surfaceContainerHigh,
       theme.colorScheme.onSurfaceVariant,
     ];
-    add('Feed', breakdown.feedCostPhp, palette[0]);
-    add('Med', breakdown.medicineCostPhp, palette[1]);
-    add('Labor', breakdown.laborCostPhp, palette[2]);
-    add('Util', breakdown.utilitiesCostPhp, palette[3]);
-    add('Eqp', breakdown.equipmentCostPhp, palette[4]);
-    add('Maint', breakdown.maintenanceCostPhp, palette[5]);
-    add('Other', breakdown.otherCostPhp, palette[6]);
+    add(l.yield_profitability_feed, breakdown.feedCostPhp, palette[0]);
+    add(l.yield_profitability_medicine, breakdown.medicineCostPhp, palette[1]);
+    add(l.yield_profitability_labor, breakdown.laborCostPhp, palette[2]);
+    add(l.yield_profitability_utilities, breakdown.utilitiesCostPhp,
+        palette[3]);
+    add(l.yield_profitability_equipment, breakdown.equipmentCostPhp,
+        palette[4]);
+    add(l.yield_profitability_maintenance, breakdown.maintenanceCostPhp,
+        palette[5]);
+    add(l.yield_profitability_other, breakdown.otherCostPhp, palette[6]);
 
     if (sections.isEmpty) {
       return Center(
         child: Text(
-          'No costs yet',
+          l.batch_profit_cost_no_costs,
           style: theme.textTheme.bodyMedium,
         ),
       );

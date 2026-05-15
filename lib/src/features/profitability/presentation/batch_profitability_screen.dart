@@ -184,10 +184,7 @@ class BatchProfitabilityScreen extends ConsumerWidget {
             ),
           ),
           SectionHeader(title: l.batch_profit_cost_breakdown),
-          SizedBox(
-            height: 220,
-            child: _CostPie(breakdown: p),
-          ),
+          _CostPie(breakdown: p),
         ],
       ),
     );
@@ -200,24 +197,10 @@ class _CostPie extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final sections = <PieChartSectionData>[];
-    void add(String label, double v, Color c) {
-      if (v <= 0) return;
-      sections.add(
-        PieChartSectionData(
-          value: v,
-          color: c,
-          title: label,
-          radius: 80,
-          titleStyle: theme.textTheme.labelMedium?.copyWith(
-            color: Colors.white,
-          ),
-        ),
-      );
-    }
+    final l = AppLocalizations.of(context);
 
+    // Build (label, value, color) tuples.
     final palette = [
       theme.colorScheme.primary,
       theme.colorScheme.tertiary,
@@ -227,18 +210,45 @@ class _CostPie extends StatelessWidget {
       theme.colorScheme.surfaceContainerHigh,
       theme.colorScheme.onSurfaceVariant,
     ];
-    add(l.yield_profitability_feed, breakdown.feedCostPhp, palette[0]);
-    add(l.yield_profitability_medicine, breakdown.medicineCostPhp, palette[1]);
-    add(l.yield_profitability_labor, breakdown.laborCostPhp, palette[2]);
-    add(l.yield_profitability_utilities, breakdown.utilitiesCostPhp,
-        palette[3]);
-    add(l.yield_profitability_equipment, breakdown.equipmentCostPhp,
-        palette[4]);
-    add(l.yield_profitability_maintenance, breakdown.maintenanceCostPhp,
-        palette[5]);
-    add(l.yield_profitability_other, breakdown.otherCostPhp, palette[6]);
+    final entries = <({String label, double value, Color color})>[
+      (
+        label: l.yield_profitability_feed,
+        value: breakdown.feedCostPhp,
+        color: palette[0],
+      ),
+      (
+        label: l.yield_profitability_medicine,
+        value: breakdown.medicineCostPhp,
+        color: palette[1],
+      ),
+      (
+        label: l.yield_profitability_labor,
+        value: breakdown.laborCostPhp,
+        color: palette[2],
+      ),
+      (
+        label: l.yield_profitability_utilities,
+        value: breakdown.utilitiesCostPhp,
+        color: palette[3],
+      ),
+      (
+        label: l.yield_profitability_equipment,
+        value: breakdown.equipmentCostPhp,
+        color: palette[4],
+      ),
+      (
+        label: l.yield_profitability_maintenance,
+        value: breakdown.maintenanceCostPhp,
+        color: palette[5],
+      ),
+      (
+        label: l.yield_profitability_other,
+        value: breakdown.otherCostPhp,
+        color: palette[6],
+      ),
+    ].where((e) => e.value > 0).toList();
 
-    if (sections.isEmpty) {
+    if (entries.isEmpty) {
       return Center(
         child: Text(
           l.batch_profit_cost_no_costs,
@@ -246,8 +256,84 @@ class _CostPie extends StatelessWidget {
         ),
       );
     }
-    return PieChart(
-      PieChartData(sections: sections, centerSpaceRadius: 32),
+
+    final total = entries.fold<double>(0, (s, e) => s + e.value);
+    final sections = entries.map((e) {
+      final pct = e.value / total * 100;
+      return PieChartSectionData(
+        value: e.value,
+        color: e.color,
+        radius: 80,
+        // Only show percentage labels on slices >= 8% to avoid cramped text.
+        title: pct >= 8 ? '${pct.toStringAsFixed(0)}%' : '',
+        titleStyle: theme.textTheme.labelMedium?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }).toList();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 220,
+          child: PieChart(
+            PieChartData(sections: sections, centerSpaceRadius: 32),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          children: entries
+              .map(
+                (e) => _LegendRow(
+                  color: e.color,
+                  label: e.label,
+                  value: e.value,
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendRow extends StatelessWidget {
+  const _LegendRow({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+  final Color color;
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(label, style: theme.textTheme.bodyMedium),
+        const SizedBox(width: 4),
+        Text(
+          formatCurrencyPhp(context, value),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

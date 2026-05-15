@@ -3,5 +3,9 @@
   "app_name": "FarmApp",
   "@app_name": {
     "description": "Application display name."
-  }
+  },
+  "settings_language_section_title": "LANGUAGE",
+  "settings_language_choice_system": "System",
+  "settings_language_choice_english": "English",
+  "settings_language_choice_filipino": "Filipino"
 }

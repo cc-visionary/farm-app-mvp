@@ -1,4 +1,8 @@
 {
   "@@locale": "fil",
-  "app_name": "FarmApp"
+  "app_name": "FarmApp",
+  "settings_language_section_title": "WIKA",
+  "settings_language_choice_system": "System",
+  "settings_language_choice_english": "Ingles",
+  "settings_language_choice_filipino": "Filipino"
 }

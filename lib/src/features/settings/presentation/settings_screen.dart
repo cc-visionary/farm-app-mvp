@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 
+import '../../../core/locale/locale_providers.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -54,6 +56,7 @@ class SettingsScreen extends ConsumerWidget {
               // TODO: Navigate to Automations Screen
             },
           ),
+          _LanguageSection(),
           const SizedBox(height: 32),
           _SettingsMenuItem(
             icon: Iconsax.logout,
@@ -74,6 +77,49 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Language selector — three ChoiceChips wired to the localePreferenceProvider.
+/// Tapping a chip persists the selection via [setLocalePreference] and the
+/// app re-renders with the new locale.
+class _LanguageSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
+    final current = ref.watch(localePreferenceProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(title: l.settings_language_section_title),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: Text(l.settings_language_choice_system),
+                selected: current == null,
+                onSelected: (_) => setLocalePreference(ref, null),
+              ),
+              ChoiceChip(
+                label: Text(l.settings_language_choice_english),
+                selected: current?.languageCode == 'en',
+                onSelected: (_) =>
+                    setLocalePreference(ref, const Locale('en')),
+              ),
+              ChoiceChip(
+                label: Text(l.settings_language_choice_filipino),
+                selected: current?.languageCode == 'fil',
+                onSelected: (_) =>
+                    setLocalePreference(ref, const Locale('fil')),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

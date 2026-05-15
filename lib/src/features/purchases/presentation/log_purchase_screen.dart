@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../inventory/application/inventory_providers.dart';
@@ -64,12 +66,13 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
 
     if (_vendor.text.trim().isEmpty) {
-      _snack('Vendor name is required.');
+      _snack(l.purchase_log_vendor_required);
       return;
     }
 
@@ -77,17 +80,17 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
     for (var i = 0; i < _lines.length; i++) {
       final r = _lines[i];
       if (r.supplyId == null) {
-        _snack('Line ${i + 1}: supply not picked.');
+        _snack(l.purchase_log_line_supply_required(i + 1));
         return;
       }
       final q = num.tryParse(r.qty.text.trim());
       final c = double.tryParse(r.unitCost.text.trim());
       if (q == null || q <= 0) {
-        _snack('Line ${i + 1}: quantity must be positive.');
+        _snack(l.purchase_log_line_quantity_required(i + 1));
         return;
       }
       if (c == null || c < 0) {
-        _snack('Line ${i + 1}: unit cost must be a number.');
+        _snack(l.purchase_log_line_unit_cost_required(i + 1));
         return;
       }
       inputs.add(
@@ -126,6 +129,7 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final supplies = farmId == null
@@ -134,28 +138,26 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
             const <Supply>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Log purchase')),
+      appBar: AppBar(title: Text(l.purchase_log_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'VENDOR',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.purchase_log_section_vendor,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             TextField(
               controller: _vendor,
-              decoration: const InputDecoration(
-                hintText: 'Who you bought from',
+              decoration: InputDecoration(
+                hintText: l.purchase_log_vendor_hint,
               ),
             ),
-            const SectionHeader(title: 'PURCHASE DATE'),
+            SectionHeader(title: l.purchase_log_section_date),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(
-                '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
-              ),
+              title: Text(formatMediumDate(context, _date)),
               trailing: const Icon(Iconsax.calendar),
               onTap: () async {
                 final picked = await AdaptiveDatePicker.show(
@@ -167,14 +169,14 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                 if (picked != null) setState(() => _date = picked);
               },
             ),
-            const SectionHeader(title: 'REFERENCE'),
+            SectionHeader(title: l.purchase_log_section_reference),
             TextField(
               controller: _reference,
-              decoration: const InputDecoration(
-                hintText: 'Receipt or invoice no. (optional)',
+              decoration: InputDecoration(
+                hintText: l.purchase_log_reference_hint,
               ),
             ),
-            const SectionHeader(title: 'LINE ITEMS'),
+            SectionHeader(title: l.purchase_log_section_line_items),
             ..._lines.asMap().entries.map((entry) {
               final i = entry.key;
               final r = entry.value;
@@ -187,7 +189,7 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                       Row(
                         children: [
                           Text(
-                            'Line ${i + 1}',
+                            l.purchase_log_line_number(i + 1),
                             style: theme.textTheme.labelLarge,
                           ),
                           const Spacer(),
@@ -202,8 +204,8 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                       ),
                       DropdownButtonFormField<String>(
                         initialValue: r.supplyId,
-                        decoration: const InputDecoration(
-                          hintText: 'Pick supply',
+                        decoration: InputDecoration(
+                          hintText: l.purchase_log_pick_supply,
                         ),
                         items: supplies
                             .map(
@@ -222,8 +224,8 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                             child: TextField(
                               controller: r.qty,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Quantity',
+                              decoration: InputDecoration(
+                                labelText: l.purchase_log_quantity_label,
                               ),
                               onChanged: (_) => setState(() {}),
                             ),
@@ -233,8 +235,8 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                             child: TextField(
                               controller: r.unitCost,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Unit cost ₱',
+                              decoration: InputDecoration(
+                                labelText: l.purchase_log_unit_cost_label,
                               ),
                               onChanged: (_) => setState(() {}),
                             ),
@@ -246,7 +248,9 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            'Line: ₱${r.lineTotal.toStringAsFixed(0)}',
+                            l.purchase_log_line_total(
+                              r.lineTotal.toStringAsFixed(0),
+                            ),
                             style: theme.textTheme.labelLarge,
                           ),
                         ],
@@ -258,7 +262,7 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
             }),
             OutlinedButton.icon(
               icon: const Icon(Iconsax.add),
-              label: const Text('Add line'),
+              label: Text(l.purchase_log_add_line),
               onPressed: () => setState(() => _lines.add(_LineRow())),
             ),
             const SizedBox(height: 16),
@@ -271,12 +275,12 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Grand total',
+                    l.purchase_log_grand_total,
                     style: theme.textTheme.titleMedium,
                   ),
                   const Spacer(),
                   Text(
-                    '₱${_grandTotal.toStringAsFixed(0)}',
+                    formatCurrencyPhp(context, _grandTotal),
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -284,7 +288,7 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                 ],
               ),
             ),
-            const SectionHeader(title: 'NOTES'),
+            SectionHeader(title: l.supply_form_section_notes),
             TextField(controller: _notes, maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
@@ -295,7 +299,7 @@ class _LogPurchaseScreenState extends ConsumerState<LogPurchaseScreen> {
                       width: 24,
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
-                  : const Text('Save purchase'),
+                  : Text(l.purchase_log_submit),
             ),
           ],
         ),

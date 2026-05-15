@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/purchase_providers.dart';
 import 'log_purchase_screen.dart';
@@ -13,16 +14,17 @@ class PurchasesListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final purchasesAsync = ref.watch(purchasesStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Purchases')),
+      appBar: AppBar(title: Text(l.purchases_list_title)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.add),
-        label: const Text('Log purchase'),
+        label: Text(l.purchases_list_fab_log),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const LogPurchaseScreen()),
@@ -31,11 +33,10 @@ class PurchasesListScreen extends ConsumerWidget {
       body: purchasesAsync.when(
         data: (list) {
           if (list.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.receipt_2,
-              title: 'No purchases logged',
-              subtitle:
-                  'Tap "Log purchase" to record your first delivery.',
+              title: l.purchases_list_empty_title,
+              subtitle: l.purchases_list_empty_subtitle,
             );
           }
           return ListView.builder(
@@ -50,11 +51,11 @@ class PurchasesListScreen extends ConsumerWidget {
                     style: theme.textTheme.titleMedium,
                   ),
                   subtitle: Text(
-                    '${DateFormat.yMMMd().format(p.purchaseDate.toDate())}'
+                    '${formatMediumDate(context, p.purchaseDate.toDate())}'
                     '${p.referenceNo != null ? " · ${p.referenceNo}" : ""}',
                   ),
                   trailing: Text(
-                    '₱${p.totalCostPhp.toStringAsFixed(0)}',
+                    formatCurrencyPhp(context, p.totalCostPhp),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),

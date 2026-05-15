@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/inventory_providers.dart';
@@ -47,13 +48,14 @@ class _State extends ConsumerState<AddEditSupplyScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name is required.')),
+        SnackBar(content: Text(l.supply_form_name_required)),
       );
       return;
     }
@@ -97,59 +99,72 @@ class _State extends ConsumerState<AddEditSupplyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'New supply' : 'Edit supply'),
+        title: Text(
+          widget.existing == null ? l.supply_add_title : l.supply_edit_title,
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'NAME',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.supply_form_section_name,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(
-                hintText: 'e.g., Pigrolac Grower',
+              decoration: InputDecoration(
+                hintText: l.supply_form_name_hint,
               ),
             ),
-            const SectionHeader(title: 'CATEGORY'),
+            SectionHeader(title: l.supply_form_section_category),
             SegmentedButton<SupplyCategory>(
               segments: SupplyCategory.values
-                  .map((c) => ButtonSegment(value: c, label: Text(c.label)))
+                  .map(
+                    (c) => ButtonSegment(
+                      value: c,
+                      label: Text(localizedSupplyCategory(l, c)),
+                    ),
+                  )
                   .toList(),
               selected: {_category},
               onSelectionChanged: (s) => setState(() => _category = s.first),
             ),
-            const SectionHeader(title: 'UNIT'),
+            SectionHeader(title: l.supply_form_section_unit),
             DropdownButtonFormField<SupplyUnit>(
               initialValue: _unit,
               items: SupplyUnit.values
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u.label)))
+                  .map(
+                    (u) => DropdownMenuItem(
+                      value: u,
+                      child: Text(localizedSupplyUnit(l, u)),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) => setState(() => _unit = v ?? SupplyUnit.unit),
             ),
-            const SectionHeader(title: 'PACKAGE & THRESHOLDS'),
+            SectionHeader(title: l.supply_form_section_thresholds),
             TextField(
               controller: _unitsPerPackage,
-              decoration: const InputDecoration(
-                labelText: 'Units per package (optional)',
-                helperText: 'e.g., 50 if a sack is 50 kg',
+              decoration: InputDecoration(
+                labelText: l.supply_form_units_per_package_label,
+                helperText: l.supply_form_units_per_package_helper,
               ),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _lowStock,
-              decoration: const InputDecoration(
-                labelText: 'Low-stock alert threshold (optional)',
+              decoration: InputDecoration(
+                labelText: l.supply_form_low_stock_label,
               ),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'NOTES'),
+            SectionHeader(title: l.supply_form_section_notes),
             TextField(controller: _notes, maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
@@ -161,7 +176,9 @@ class _State extends ConsumerState<AddEditSupplyScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
                   : Text(
-                      widget.existing == null ? 'Add supply' : 'Save changes',
+                      widget.existing == null
+                          ? l.supply_form_submit_add
+                          : l.supply_form_submit_edit,
                     ),
             ),
           ],

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
 import '../application/inventory_providers.dart';
 import '../domain/supply.dart';
+import '../domain/supply_category.dart';
 
 class LogConsumptionScreen extends ConsumerStatefulWidget {
   const LogConsumptionScreen({super.key, this.initialSupplyId});
@@ -38,19 +40,20 @@ class _State extends ConsumerState<LogConsumptionScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
     if (_supplyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pick a supply.')),
+        SnackBar(content: Text(l.consumption_log_pick_supply)),
       );
       return;
     }
     final qty = num.tryParse(_quantity.text.trim());
     if (qty == null || qty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Quantity must be a positive number.')),
+        SnackBar(content: Text(l.consumption_log_quantity_required)),
       );
       return;
     }
@@ -63,7 +66,7 @@ class _State extends ConsumerState<LogConsumptionScreen> {
     if (supply == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Supply not found.')),
+          SnackBar(content: Text(l.consumption_log_supply_not_found)),
         );
         setState(() => _busy = false);
       }
@@ -102,6 +105,7 @@ class _State extends ConsumerState<LogConsumptionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final user = ref.watch(authStateChangesProvider).asData?.value;
@@ -129,57 +133,67 @@ class _State extends ConsumerState<LogConsumptionScreen> {
             (s) => s.id == _supplyId,
             orElse: () => supplies.first,
           );
+    final selectedSupplyUnitLabel = selectedSupply == null
+        ? null
+        : localizedSupplyUnit(l, selectedSupply.unit);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Log consumption')),
+      appBar: AppBar(title: Text(l.consumption_log_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'SUPPLY',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.consumption_log_supply_section,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             DropdownButtonFormField<String>(
               initialValue: _supplyId,
-              decoration: const InputDecoration(hintText: 'Pick a supply'),
+              decoration: InputDecoration(
+                hintText: l.consumption_log_supply_hint,
+              ),
               items: supplies
                   .map(
                     (s) => DropdownMenuItem(
                       value: s.id,
                       child: Text(
-                        '${s.name} (${s.currentStock} ${s.unit.label})',
+                        '${s.name} (${s.currentStock} ${localizedSupplyUnit(l, s.unit)})',
                       ),
                     ),
                   )
                   .toList(),
               onChanged: (v) => setState(() => _supplyId = v),
             ),
-            const SectionHeader(title: 'QUANTITY'),
+            SectionHeader(title: l.consumption_log_quantity_section),
             TextField(
               controller: _quantity,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                hintText: 'How much',
-                suffixText: selectedSupply?.unit.label,
+                hintText: l.consumption_log_quantity_hint,
+                suffixText: selectedSupplyUnitLabel,
               ),
             ),
-            const SectionHeader(title: 'PEN'),
+            SectionHeader(title: l.consumption_log_pen_section),
             DropdownButtonFormField<String?>(
               initialValue: _penId,
-              decoration: const InputDecoration(
-                hintText: 'Pick a pen (optional)',
+              decoration: InputDecoration(
+                hintText: l.consumption_log_pen_hint,
               ),
               items: [
-                const DropdownMenuItem(
+                DropdownMenuItem(
                   value: null,
-                  child: Text('— Unattributed —'),
+                  child: Text(l.consumption_log_pen_unattributed),
                 ),
                 ...visiblePens.map(
                   (p) => DropdownMenuItem(
                     value: p.id,
-                    child: Text('${p.name} · ${p.currentOccupancy} pigs'),
+                    child: Text(
+                      l.consumption_log_pen_with_count(
+                        p.name,
+                        p.currentOccupancy,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -189,10 +203,8 @@ class _State extends ConsumerState<LogConsumptionScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: SwitchListTile(
-                  title: const Text('Show all pens'),
-                  subtitle: const Text(
-                    'Includes pens outside your assigned areas',
-                  ),
+                  title: Text(l.consumption_log_show_all_pens_title),
+                  subtitle: Text(l.consumption_log_show_all_pens_subtitle),
                   value: _showAllPens,
                   onChanged: (v) => setState(() {
                     _showAllPens = v;
@@ -200,7 +212,7 @@ class _State extends ConsumerState<LogConsumptionScreen> {
                   }),
                 ),
               ),
-            const SectionHeader(title: 'NOTES'),
+            SectionHeader(title: l.supply_form_section_notes),
             TextField(controller: _notes, maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
@@ -211,7 +223,7 @@ class _State extends ConsumerState<LogConsumptionScreen> {
                       width: 24,
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
-                  : const Text('Save consumption'),
+                  : Text(l.consumption_log_submit),
             ),
           ],
         ),

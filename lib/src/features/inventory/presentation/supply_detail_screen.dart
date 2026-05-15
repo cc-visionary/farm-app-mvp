@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -23,6 +24,7 @@ class SupplyDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return const SizedBox.shrink();
@@ -41,7 +43,7 @@ class SupplyDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Supply'),
+        title: Text(l.supply_detail_title),
         actions: [
           if (canEdit)
             supplyAsync.maybeWhen(
@@ -70,7 +72,7 @@ class SupplyDetailScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.arrow_up_3),
-        label: const Text('Log consumption'),
+        label: Text(l.supply_detail_fab_log_consumption),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -88,8 +90,10 @@ class _SupplyDetailBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final formatter = NumberFormat.decimalPattern('en_PH');
+    final unitLabel = localizedSupplyUnit(l, supply.unit);
+    final categoryLabel = localizedSupplyCategory(l, supply.category);
     final movementsAsync = ref.watch(
       movementsForSupplyProvider(
         (farmId: supply.farmId, supplyId: supply.id),
@@ -107,26 +111,34 @@ class _SupplyDetailBody extends ConsumerWidget {
               children: [
                 Text(supply.name, style: theme.textTheme.headlineSmall),
                 Text(
-                  '${supply.category.label} · ${supply.unit.label}',
+                  '$categoryLabel · $unitLabel',
                   style: theme.textTheme.bodyMedium,
                 ),
                 const Divider(height: 24),
-                Text('Current stock', style: theme.textTheme.bodyMedium),
                 Text(
-                  '${formatter.format(supply.currentStock)} ${supply.unit.label}',
+                  l.supply_detail_current_stock_label,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Text(
+                  '${formatDecimal(context, supply.currentStock)} $unitLabel',
                   style: theme.textTheme.headlineLarge,
                 ),
                 if (supply.weightedAvgUnitCostPhp > 0) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Weighted avg: ₱${supply.weightedAvgUnitCostPhp.toStringAsFixed(2)} / ${supply.unit.label}',
+                    l.supply_detail_weighted_avg_label(
+                      supply.weightedAvgUnitCostPhp.toStringAsFixed(2),
+                      unitLabel,
+                    ),
                     style: theme.textTheme.bodyMedium,
                   ),
                 ],
                 if (supply.lowStockThreshold != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'Low-stock alert at ${formatter.format(supply.lowStockThreshold!)}',
+                    l.supply_detail_low_stock_threshold_label(
+                      formatDecimal(context, supply.lowStockThreshold!),
+                    ),
                     style: theme.textTheme.bodyMedium,
                   ),
                 ],
@@ -134,17 +146,16 @@ class _SupplyDetailBody extends ConsumerWidget {
             ),
           ),
         ),
-        const SectionHeader(title: 'STOCK HISTORY'),
+        SectionHeader(title: l.supply_detail_stock_history),
         movementsAsync.when(
           data: (list) {
             if (list.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: EmptyState(
                   icon: Iconsax.box,
-                  title: 'No movements yet',
-                  subtitle:
-                      'Stock changes will appear here once you log a purchase or consumption.',
+                  title: l.supply_detail_no_movements_title,
+                  subtitle: l.supply_detail_no_movements_subtitle,
                 ),
               );
             }
@@ -166,6 +177,7 @@ class _MovementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isInflow = movement.quantity > 0;
@@ -181,16 +193,16 @@ class _MovementCard extends StatelessWidget {
       MovementType.adjustment => Iconsax.refresh,
       MovementType.wastage => Icons.delete_outline,
     };
-    final formatter = NumberFormat.decimalPattern('en_PH');
+    final createdAt = movement.createdAt.toDate();
+    final subtitle =
+        '${formatMediumDate(context, createdAt)} · ${formatJm(context, createdAt)}';
     return Card(
       child: ListTile(
         leading: Icon(icon, color: color),
-        title: Text(movement.type.label),
-        subtitle: Text(
-          DateFormat.yMMMd().add_jm().format(movement.createdAt.toDate()),
-        ),
+        title: Text(localizedMovementType(l, movement.type)),
+        subtitle: Text(subtitle),
         trailing: Text(
-          '${isInflow ? '+' : ''}${formatter.format(movement.quantity)}',
+          '${isInflow ? '+' : ''}${formatDecimal(context, movement.quantity)}',
           style: theme.textTheme.titleMedium?.copyWith(
             color: color,
             fontWeight: FontWeight.w700,
@@ -200,3 +212,4 @@ class _MovementCard extends StatelessWidget {
     );
   }
 }
+

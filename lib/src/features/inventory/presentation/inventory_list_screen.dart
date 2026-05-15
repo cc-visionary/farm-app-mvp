@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -30,6 +31,7 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return const SizedBox.shrink();
@@ -47,11 +49,11 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> {
     final suppliesAsync = ref.watch(suppliesStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventory')),
+      appBar: AppBar(title: Text(l.inventory_list_title)),
       floatingActionButton: canEdit
           ? FloatingActionButton.extended(
               icon: const Icon(Iconsax.add),
-              label: const Text('Add supply'),
+              label: Text(l.inventory_fab_add),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -68,19 +70,19 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> {
               spacing: 8,
               children: [
                 FilterChip(
-                  label: const Text('All'),
+                  label: Text(l.inventory_filter_all),
                   selected: _filter == _StockFilter.all,
                   onSelected: (_) =>
                       setState(() => _filter = _StockFilter.all),
                 ),
                 FilterChip(
-                  label: const Text('Low stock'),
+                  label: Text(l.inventory_filter_low),
                   selected: _filter == _StockFilter.low,
                   onSelected: (_) =>
                       setState(() => _filter = _StockFilter.low),
                 ),
                 FilterChip(
-                  label: const Text('Out of stock'),
+                  label: Text(l.inventory_filter_out),
                   selected: _filter == _StockFilter.out,
                   onSelected: (_) =>
                       setState(() => _filter = _StockFilter.out),
@@ -105,11 +107,11 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> {
                   return EmptyState(
                     icon: Iconsax.box,
                     title: supplies.isEmpty
-                        ? 'No supplies tracked'
-                        : 'No supplies match',
+                        ? l.inventory_empty_title
+                        : l.inventory_no_match_title,
                     subtitle: supplies.isEmpty
-                        ? 'Tap + to track your first feed or medicine.'
-                        : 'Try clearing the filter.',
+                        ? l.inventory_empty_subtitle
+                        : l.inventory_no_match_subtitle,
                   );
                 }
                 final byCategory = <SupplyCategory, List<Supply>>{};
@@ -126,7 +128,9 @@ class _InventoryListScreenState extends ConsumerState<InventoryListScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SectionHeader(title: c.label.toUpperCase()),
+                        SectionHeader(
+                          title: localizedSupplyCategory(l, c).toUpperCase(),
+                        ),
                         ...byCategory[c]!.map(
                           (s) => _SupplyCard(supply: s),
                         ),
@@ -151,22 +155,23 @@ class _SupplyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final formatter = NumberFormat.decimalPattern('en_PH');
+    final unitLabel = localizedSupplyUnit(l, supply.unit);
     String pillLabel;
     Color pillFg;
     Color pillBg;
     if (supply.isOutOfStock) {
-      pillLabel = 'Out';
+      pillLabel = l.inventory_status_out;
       pillFg = scheme.onError;
       pillBg = scheme.error;
     } else if (supply.isLowStock) {
-      pillLabel = 'Low';
+      pillLabel = l.inventory_status_low;
       pillFg = scheme.onTertiary;
       pillBg = scheme.tertiary;
     } else {
-      pillLabel = 'OK';
+      pillLabel = l.inventory_status_ok;
       pillFg = scheme.onPrimary;
       pillBg = scheme.primary;
     }
@@ -175,8 +180,8 @@ class _SupplyCard extends StatelessWidget {
       child: ListTile(
         title: Text(supply.name, style: theme.textTheme.titleMedium),
         subtitle: Text(
-          '${formatter.format(supply.currentStock)} ${supply.unit.label}'
-          '${supply.weightedAvgUnitCostPhp > 0 ? ' · ₱${supply.weightedAvgUnitCostPhp.toStringAsFixed(0)} / ${supply.unit.label}' : ''}',
+          '${formatDecimal(context, supply.currentStock)} $unitLabel'
+          '${supply.weightedAvgUnitCostPhp > 0 ? ' · ${formatCurrencyPhp(context, supply.weightedAvgUnitCostPhp)} / $unitLabel' : ''}',
         ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

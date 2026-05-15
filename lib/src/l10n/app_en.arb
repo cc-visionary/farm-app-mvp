@@ -342,5 +342,125 @@
   "@mortality_log_save_failed": {"placeholders": {"error": {"type": "String"}}},
   "mortality_log_confirm_title": "Mark deceased?",
   "mortality_log_confirm_body": "Mark {tagId} as deceased? This cannot be undone.",
-  "@mortality_log_confirm_body": {"placeholders": {"tagId": {"type": "String"}}}
+  "@mortality_log_confirm_body": {"placeholders": {"tagId": {"type": "String"}}},
+
+  "inventory_list_title": "Inventory",
+  "inventory_filter_all": "All",
+  "inventory_filter_low": "Low stock",
+  "inventory_filter_out": "Out of stock",
+  "inventory_empty_title": "No supplies tracked",
+  "inventory_empty_subtitle": "Tap + to track your first feed or medicine.",
+  "inventory_no_match_title": "No supplies match",
+  "inventory_no_match_subtitle": "Try clearing the filter.",
+  "inventory_fab_add": "Add supply",
+  "inventory_status_ok": "OK",
+  "inventory_status_low": "Low",
+  "inventory_status_out": "Out",
+  "supply_category_feed": "Feed",
+  "supply_category_medicine": "Medicine",
+  "supply_category_other_input": "Other input",
+  "supply_unit_kg": "kg",
+  "supply_unit_sack": "sack",
+  "supply_unit_bag": "bag",
+  "supply_unit_ml": "ml",
+  "supply_unit_dose": "dose",
+  "supply_unit_vial": "vial",
+  "supply_unit_unit": "unit",
+
+  "supply_add_title": "New supply",
+  "supply_edit_title": "Edit supply",
+  "supply_form_section_name": "NAME",
+  "supply_form_section_category": "CATEGORY",
+  "supply_form_section_unit": "UNIT",
+  "supply_form_section_thresholds": "PACKAGE & THRESHOLDS",
+  "supply_form_section_notes": "NOTES",
+  "supply_form_name_hint": "e.g., Pigrolac Grower",
+  "supply_form_units_per_package_label": "Units per package (optional)",
+  "supply_form_units_per_package_helper": "e.g., 50 if a sack is 50 kg",
+  "supply_form_low_stock_label": "Low-stock alert threshold (optional)",
+  "supply_form_submit_add": "Add supply",
+  "supply_form_submit_edit": "Save changes",
+  "supply_form_name_required": "Name is required.",
+
+  "supply_detail_title": "Supply",
+  "supply_detail_current_stock_label": "Current stock",
+  "supply_detail_weighted_avg_label": "Weighted avg: ₱{avg} / {unit}",
+  "@supply_detail_weighted_avg_label": {
+    "placeholders": {"avg": {"type": "String"}, "unit": {"type": "String"}}
+  },
+  "supply_detail_low_stock_threshold_label": "Low-stock alert at {threshold}",
+  "@supply_detail_low_stock_threshold_label": {
+    "placeholders": {"threshold": {"type": "String"}}
+  },
+  "supply_detail_stock_history": "STOCK HISTORY",
+  "supply_detail_no_movements_title": "No movements yet",
+  "supply_detail_no_movements_subtitle": "Stock changes will appear here once you log a purchase or consumption.",
+  "supply_detail_fab_log_consumption": "Log consumption",
+  "movement_type_purchase": "Purchase",
+  "movement_type_consumption": "Consumption",
+  "movement_type_adjustment": "Adjustment",
+  "movement_type_wastage": "Wastage",
+
+  "consumption_log_title": "Log consumption",
+  "consumption_log_supply_section": "SUPPLY",
+  "consumption_log_supply_hint": "Pick a supply",
+  "consumption_log_quantity_section": "QUANTITY",
+  "consumption_log_quantity_hint": "How much",
+  "consumption_log_pen_section": "PEN",
+  "consumption_log_pen_hint": "Pick a pen (optional)",
+  "consumption_log_pen_unattributed": "— Unattributed —",
+  "consumption_log_show_all_pens_title": "Show all pens",
+  "consumption_log_show_all_pens_subtitle": "Includes pens outside your assigned areas",
+  "consumption_log_pick_supply": "Pick a supply.",
+  "consumption_log_quantity_required": "Quantity must be a positive number.",
+  "consumption_log_supply_not_found": "Supply not found.",
+  "consumption_log_submit": "Save consumption",
+  "consumption_log_pen_with_count": "{name} · {count} pigs",
+  "@consumption_log_pen_with_count": {
+    "placeholders": {"name": {"type": "String"}, "count": {"type": "int"}}
+  },
+  "consumption_log_insufficient_stock": "Insufficient stock — only {current} available.",
+  "@consumption_log_insufficient_stock": {
+    "placeholders": {"current": {"type": "String"}}
+  },
+
+  "purchases_list_title": "Purchases",
+  "purchases_list_empty_title": "No purchases logged",
+  "purchases_list_empty_subtitle": "Tap \"Log purchase\" to record your first delivery.",
+  "purchases_list_fab_log": "Log purchase",
+
+  "purchase_log_title": "Log purchase",
+  "purchase_log_section_vendor": "VENDOR",
+  "purchase_log_vendor_hint": "Who you bought from",
+  "purchase_log_section_date": "PURCHASE DATE",
+  "purchase_log_section_reference": "REFERENCE",
+  "purchase_log_reference_hint": "Receipt or invoice no. (optional)",
+  "purchase_log_section_line_items": "LINE ITEMS",
+  "purchase_log_line_number": "Line {number}",
+  "@purchase_log_line_number": {
+    "placeholders": {"number": {"type": "int"}}
+  },
+  "purchase_log_pick_supply": "Pick supply",
+  "purchase_log_quantity_label": "Quantity",
+  "purchase_log_unit_cost_label": "Unit cost ₱",
+  "purchase_log_line_total": "Line: ₱{value}",
+  "@purchase_log_line_total": {
+    "placeholders": {"value": {"type": "String"}}
+  },
+  "purchase_log_add_line": "Add line",
+  "purchase_log_grand_total": "Grand total",
+  "purchase_log_submit": "Save purchase",
+  "purchase_log_vendor_required": "Vendor name is required.",
+  "purchase_log_line_supply_required": "Line {number}: supply not picked.",
+  "@purchase_log_line_supply_required": {
+    "placeholders": {"number": {"type": "int"}}
+  },
+  "purchase_log_line_quantity_required": "Line {number}: quantity must be positive.",
+  "@purchase_log_line_quantity_required": {
+    "placeholders": {"number": {"type": "int"}}
+  },
+  "purchase_log_line_unit_cost_required": "Line {number}: unit cost must be a number.",
+  "@purchase_log_line_unit_cost_required": {
+    "placeholders": {"number": {"type": "int"}}
+  }
 }

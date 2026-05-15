@@ -1,5 +1,6 @@
 {
   "@@locale": "fil",
+  "@@x-translation-review-pending": "All non-trivial translations were LLM-drafted on 2026-05-15. Native speaker review pending. Search 'TRANSLATION-REVIEW' to find specific concerns.",
 
   "app_name": "FarmApp",
 
@@ -30,6 +31,9 @@
   "common_must_be_positive": "Dapat positibo ang numero.",
   "common_must_be_positive_int": "Dapat positibong buong numero.",
   "common_pigs_count": "{count,plural, =0{Walang baboy} =1{1 baboy} other{{count} baboy}}",
+  "@common_pigs_count": {
+    "description": "TRANSLATION-REVIEW: Filipino plurals don't inflect the noun (1 baboy / 12 baboy, not 'mga baboy'). Confirm with native speaker."
+  },
   "common_heads_count": "{count,plural, =0{Walang ulo} =1{1 ulo} other{{count} ulo}}",
 
   "settings_language_section_title": "WIKA",
@@ -93,6 +97,9 @@
   "pig_status_active": "Aktibo",
   "pig_status_sold": "Naibenta",
   "pig_status_culled": "Inalis",
+  "@pig_status_culled": {
+    "description": "TRANSLATION-REVIEW: 'Inalis' = removed. No clean Filipino equivalent for industry term 'culled'; 'Pinatay' (killed) is more accurate but harsher. Confirm with native speaker."
+  },
   "pig_status_deceased": "Patay",
 
   "pig_age_years": "{n} taon",
@@ -243,6 +250,9 @@
   "farrowing_log_save_failed": "Hindi na-save ang panganganak: {error}",
 
   "health_event_type_vaccination": "Bakuna",
+  "@health_event_type_vaccination": {
+    "description": "TRANSLATION-REVIEW: 'Bakuna' is the standard loanword in PH for vaccine/vaccination. Widely understood — no review concern, but flagging in case formal 'Pagbabakuna' (the act) is preferred over 'Bakuna' (the noun)."
+  },
   "health_event_type_treatment": "Paggamot",
   "health_event_type_checkup": "Checkup",
   "health_event_type_deworming": "Deworming",
@@ -289,10 +299,19 @@
   "mortality_log_section_notes": "Mga tala",
   "mortality_log_cause_label": "Sanhi",
   "mortality_log_cause_respiratory": "Respiratory",
+  "@mortality_log_cause_respiratory": {
+    "description": "TRANSLATION-REVIEW: kept English medical term. 'Sa paghinga' (breathing-related) exists but is descriptive, not categorical. PH vets use English."
+  },
   "mortality_log_cause_digestive": "Digestive",
+  "@mortality_log_cause_digestive": {
+    "description": "TRANSLATION-REVIEW: kept English medical term. PH vets use English categorical labels."
+  },
   "mortality_log_cause_accident": "Aksidente",
   "mortality_log_cause_unknown": "Hindi alam",
   "mortality_log_cause_asf": "Pinaghihinalaang ASF",
+  "@mortality_log_cause_asf": {
+    "description": "TRANSLATION-REVIEW: 'Pinaghihinalaang ASF' = Suspected ASF. ASF (African Swine Fever) kept as acronym — universally used in PH swine industry."
+  },
   "mortality_log_cause_other": "Iba pa",
   "mortality_log_notes_hint": "Opsyonal",
   "mortality_log_photos_section": "Mga larawan (opsyonal)",
@@ -404,6 +423,9 @@
   "payment_method_cash": "Cash",
   "payment_method_bank_transfer": "Bank transfer",
   "payment_method_gcash": "GCash",
+  "@payment_method_gcash": {
+    "description": "TRANSLATION-REVIEW: brand name kept as-is per i18n policy (brands/units never translated)."
+  },
   "payment_method_check": "Tseke",
   "payment_method_other": "Iba pa",
   "payment_status_paid": "Bayad na",
@@ -455,6 +477,9 @@
   "expense_category_medicine": "Gamot",
   "expense_category_labor": "Lakas-paggawa",
   "expense_category_utilities": "Utilities",
+  "@expense_category_utilities": {
+    "description": "TRANSLATION-REVIEW: kept English. 'Kuryente at tubig' (electricity & water) is descriptive but loses generality. 'Utilities' is widely understood in PH billing context."
+  },
   "expense_category_equipment": "Kagamitan",
   "expense_category_maintenance": "Pagpapanatili",
   "expense_category_other": "Iba pa",
@@ -587,6 +612,9 @@
   "equipment_list_empty_title": "Walang kagamitang tumutugma sa filter.",
   "equipment_list_fab_add": "Magdagdag ng kagamitan",
   "equipment_type_ventilation": "Ventilation",
+  "@equipment_type_ventilation": {
+    "description": "TRANSLATION-REVIEW: kept English. 'Bentilasyon' exists as transliteration but English is more recognizable on farm equipment labels."
+  },
   "equipment_type_feeder": "Feeder",
   "equipment_type_water_pump": "Water pump",
   "equipment_type_generator": "Generator",
@@ -642,10 +670,22 @@
   "shift_pattern_daily": "Araw-araw",
   "shift_pattern_weekly": "Lingguhan",
   "shift_dow_sun": "L",
+  "@shift_dow_sun": {
+    "description": "TRANSLATION-REVIEW: 'Linggo' = L. Tagalog DoW initials L/L/M/M/H/B/S collide on Sun/Mon (both L) and Tue/Wed (both M) — distinct from English S/M/T/W/T/F/S. Confirm if 2-letter initials (Li/Lu/Ma/Mi/Hu/Bi/Sa) are clearer for shift calendar."
+  },
   "shift_dow_mon": "L",
+  "@shift_dow_mon": {
+    "description": "TRANSLATION-REVIEW: 'Lunes' = L. Collides with 'Linggo' (Sunday). See @shift_dow_sun."
+  },
   "shift_dow_tue": "M",
   "shift_dow_wed": "M",
+  "@shift_dow_wed": {
+    "description": "TRANSLATION-REVIEW: 'Miyerkules' = M. Collides with 'Martes' (Tuesday). See @shift_dow_sun."
+  },
   "shift_dow_thu": "H",
+  "@shift_dow_thu": {
+    "description": "TRANSLATION-REVIEW: 'Huwebes' = H. Distinct from English T (Thursday) — native speakers should not be surprised."
+  },
   "shift_dow_fri": "B",
   "shift_dow_sat": "S",
 
@@ -697,10 +737,19 @@
   "areas_list_fab_add": "Magdagdag ng lugar",
   "area_purpose_breeding": "Pagpapalahi",
   "area_purpose_gestation": "Gestation",
+  "@area_purpose_gestation": {
+    "description": "TRANSLATION-REVIEW: kept English. 'Pagbubuntis' (pregnancy) is medical/general; 'Gestation' is standard industry term for the pen-type."
+  },
   "area_purpose_farrowing": "Panganganak",
   "area_purpose_nursery": "Nursery",
   "area_purpose_grow_finish": "Grow-Finish",
+  "@area_purpose_grow_finish": {
+    "description": "TRANSLATION-REVIEW: kept 'Grow-Finish' as English term; some PH farms use 'Pataba' (fattening). Confirm regional preference."
+  },
   "area_purpose_quarantine": "Quarantine",
+  "@area_purpose_quarantine": {
+    "description": "TRANSLATION-REVIEW: kept English; 'Kuwarentinas' exists but less common in farm context. Post-COVID, 'Quarantine' is the universally understood term."
+  },
   "area_purpose_boar_pen": "Kulungan ng Bulugan",
   "area_purpose_isolation": "Isolation",
   "area_purpose_other": "Iba pa",

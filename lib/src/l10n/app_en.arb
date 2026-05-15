@@ -1,9 +1,47 @@
 {
   "@@locale": "en",
+
   "app_name": "FarmApp",
-  "@app_name": {
-    "description": "Application display name."
+  "@app_name": {"description": "Application display name."},
+
+  "common_save": "Save",
+  "common_save_changes": "Save changes",
+  "common_cancel": "Cancel",
+  "common_back": "Back",
+  "common_done": "Done",
+  "common_confirm": "Confirm",
+  "common_delete": "Delete",
+  "common_remove": "Remove",
+  "common_edit": "Edit",
+  "common_loading": "Loading…",
+  "common_yes": "Yes",
+  "common_no": "No",
+  "common_optional": "Optional",
+  "common_notes": "Notes",
+  "common_date": "Date",
+  "common_total": "Total",
+  "common_search": "Search",
+  "common_filter": "Filter",
+  "common_close": "Close",
+  "common_retry": "Retry",
+  "common_sign_out": "Sign out",
+  "common_required_field": "This field is required.",
+  "common_required_field_named": "{field} is required.",
+  "@common_required_field_named": {
+    "placeholders": {"field": {"type": "String", "example": "Buyer name"}}
   },
+  "common_invalid_number": "Must be a number.",
+  "common_must_be_positive": "Must be a positive number.",
+  "common_must_be_positive_int": "Must be a positive whole number.",
+  "common_pigs_count": "{count,plural, =0{No pigs} =1{1 pig} other{{count} pigs}}",
+  "@common_pigs_count": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "common_heads_count": "{count,plural, =0{No heads} =1{1 head} other{{count} heads}}",
+  "@common_heads_count": {
+    "placeholders": {"count": {"type": "int"}}
+  },
+
   "settings_language_section_title": "LANGUAGE",
   "settings_language_choice_system": "System",
   "settings_language_choice_english": "English",

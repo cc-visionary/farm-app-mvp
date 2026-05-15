@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/shared_dialogs.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../application/auth_providers.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
@@ -34,22 +35,22 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     }
   }
 
-  bool _validateInputs() {
+  bool _validateInputs(AppLocalizations l) {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in both fields.');
+      setState(() => _errorMessage = l.farm_setup_both_fields_required);
       return false;
     }
     final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!emailRegex.hasMatch(email)) {
-      setState(() => _errorMessage = 'Please enter a valid email address.');
+      setState(() => _errorMessage = l.auth_signup_error_invalid_email);
       return false;
     }
     if (password.length < 6) {
       setState(
-        () => _errorMessage = 'Password must be at least 6 characters long.',
+        () => _errorMessage = l.auth_signup_error_weak_password,
       );
       return false;
     }
@@ -65,8 +66,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_validateInputs()) return;
+  Future<void> _submit(AppLocalizations l) async {
+    if (!_validateInputs(l)) return;
     setState(() => _isLoading = true);
     try {
       await ref.read(authRepositoryProvider).signUpWithEmail(
@@ -77,8 +78,22 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       context.go('/setup');
     } catch (e) {
       if (mounted) {
+        final raw = e.toString();
+        String message;
+        if (raw.contains('weak-password') ||
+            raw.contains('password provided is too weak')) {
+          message = l.auth_signup_error_weak_password;
+        } else if (raw.contains('email-already-in-use') ||
+            raw.contains('account already exists')) {
+          message = l.auth_signup_error_email_in_use;
+        } else if (raw.contains('invalid-email') ||
+            raw.contains('The email address is not valid')) {
+          message = l.auth_signup_error_invalid_email;
+        } else {
+          message = l.auth_login_error_generic;
+        }
         setState(() {
-          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _errorMessage = message;
         });
       }
     } finally {
@@ -91,6 +106,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       body: Stack(
@@ -135,13 +151,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Farm CRM',
+                      l.app_name,
                       style: textTheme.headlineLarge,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Create your account',
+                      l.auth_signup_title,
                       style: textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -149,7 +165,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    Text('Email', style: textTheme.labelLarge),
+                    Text(l.auth_signup_email_label,
+                        style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _emailController,
@@ -159,13 +176,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    Text('Password', style: textTheme.labelLarge),
+                    Text(l.auth_signup_password_label,
+                        style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _passwordController,
                       obscureText: !_isPasswordVisible,
                       decoration: InputDecoration(
-                        hintText: 'At least 6 characters',
+                        hintText: l.auth_signup_password_label,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
@@ -192,7 +210,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
                     const SizedBox(height: 24),
                     FilledButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: _isLoading ? null : () => _submit(l),
                       child: _isLoading
                           ? SizedBox(
                               height: 20,
@@ -202,24 +220,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                                 strokeWidth: 2.5,
                               ),
                             )
-                          : const Text('Create account'),
+                          : Text(l.auth_signup_submit),
                     ),
                     const SizedBox(height: 16),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Already have an account?',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/login'),
-                          child: const Text('Sign in'),
-                        ),
-                      ],
+                    Center(
+                      child: TextButton(
+                        onPressed: () => context.go('/login'),
+                        child: Text(l.auth_signup_have_account_cta),
+                      ),
                     ),
                   ],
                 ),

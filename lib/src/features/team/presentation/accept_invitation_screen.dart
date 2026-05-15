@@ -2,10 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/team_providers.dart';
 import '../domain/invitation.dart';
+
+String _roleLabel(AppLocalizations l, String roleValue) {
+  switch (roleValue) {
+    case 'manager':
+      return l.invitation_role_manager;
+    case 'worker':
+      return l.invitation_role_worker;
+    case 'vet':
+      return l.invitation_role_vet;
+    default:
+      return roleValue;
+  }
+}
 
 class AcceptInvitationScreen extends ConsumerStatefulWidget {
   const AcceptInvitationScreen({super.key, required this.invitations});
@@ -47,9 +61,10 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("You're invited")),
+      appBar: AppBar(title: Text(l.invitation_accept_title)),
       body: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         itemCount: widget.invitations.length,
@@ -94,7 +109,8 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Role: ${inv.role.value}',
+                              l.invitation_accept_role_label(
+                                  _roleLabel(l, inv.role.value)),
                               style: textTheme.bodyMedium?.copyWith(
                                 color: colorScheme.onSurfaceVariant,
                               ),
@@ -107,7 +123,7 @@ class _State extends ConsumerState<AcceptInvitationScreen> {
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _busy ? null : () => _accept(inv),
-                    child: const Text('Accept invitation'),
+                    child: Text(l.invitation_accept_button),
                   ),
                 ],
               ),

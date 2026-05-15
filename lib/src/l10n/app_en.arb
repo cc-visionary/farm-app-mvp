@@ -45,5 +45,39 @@
   "settings_language_section_title": "LANGUAGE",
   "settings_language_choice_system": "System",
   "settings_language_choice_english": "English",
-  "settings_language_choice_filipino": "Filipino"
+  "settings_language_choice_filipino": "Filipino",
+
+  "auth_login_title": "Welcome to FarmApp",
+  "auth_login_subtitle": "Sign in to your farm",
+  "auth_login_email_label": "Email",
+  "auth_login_password_label": "Password",
+  "auth_login_submit": "Sign in",
+  "auth_login_no_account_cta": "Create an account",
+  "auth_login_error_invalid_credentials": "Invalid email or password.",
+  "auth_login_error_generic": "An error occurred. Please try again.",
+
+  "auth_signup_title": "Create your account",
+  "auth_signup_email_label": "Email",
+  "auth_signup_password_label": "Password",
+  "auth_signup_submit": "Create account",
+  "auth_signup_have_account_cta": "I already have an account",
+  "auth_signup_error_weak_password": "The password provided is too weak.",
+  "auth_signup_error_email_in_use": "An account already exists for that email.",
+  "auth_signup_error_invalid_email": "The email address is not valid.",
+
+  "farm_setup_create_title": "Welcome — set up your farm",
+  "farm_setup_create_display_name_label": "Display name",
+  "farm_setup_create_farm_name_label": "Farm name",
+  "farm_setup_create_submit": "Create farm",
+  "farm_setup_both_fields_required": "Both fields are required.",
+
+  "invitation_accept_title": "You're invited",
+  "invitation_accept_role_label": "Role: {role}",
+  "@invitation_accept_role_label": {
+    "placeholders": {"role": {"type": "String"}}
+  },
+  "invitation_accept_button": "Accept",
+  "invitation_role_manager": "Manager",
+  "invitation_role_worker": "Worker",
+  "invitation_role_vet": "Veterinarian"
 }

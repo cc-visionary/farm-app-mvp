@@ -35,5 +35,36 @@
   "settings_language_section_title": "WIKA",
   "settings_language_choice_system": "System",
   "settings_language_choice_english": "Ingles",
-  "settings_language_choice_filipino": "Filipino"
+  "settings_language_choice_filipino": "Filipino",
+
+  "auth_login_title": "Maligayang pagdating sa FarmApp",
+  "auth_login_subtitle": "Mag-sign in sa iyong farm",
+  "auth_login_email_label": "Email",
+  "auth_login_password_label": "Password",
+  "auth_login_submit": "Mag-sign in",
+  "auth_login_no_account_cta": "Gumawa ng account",
+  "auth_login_error_invalid_credentials": "Mali ang email o password.",
+  "auth_login_error_generic": "May naganap na error. Pakisubukang muli.",
+
+  "auth_signup_title": "Gumawa ng account",
+  "auth_signup_email_label": "Email",
+  "auth_signup_password_label": "Password",
+  "auth_signup_submit": "Gumawa ng account",
+  "auth_signup_have_account_cta": "May account na ako",
+  "auth_signup_error_weak_password": "Masyadong mahina ang password.",
+  "auth_signup_error_email_in_use": "May account na sa email na iyan.",
+  "auth_signup_error_invalid_email": "Hindi wasto ang email address.",
+
+  "farm_setup_create_title": "Maligayang pagdating — i-setup ang iyong farm",
+  "farm_setup_create_display_name_label": "Iyong pangalan",
+  "farm_setup_create_farm_name_label": "Pangalan ng farm",
+  "farm_setup_create_submit": "Gumawa ng farm",
+  "farm_setup_both_fields_required": "Kailangan ang dalawang field.",
+
+  "invitation_accept_title": "Naimbitahan ka",
+  "invitation_accept_role_label": "Tungkulin: {role}",
+  "invitation_accept_button": "Tanggapin",
+  "invitation_role_manager": "Manager",
+  "invitation_role_worker": "Manggagawa",
+  "invitation_role_vet": "Beterinaryo"
 }

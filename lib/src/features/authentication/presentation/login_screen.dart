@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/shared_dialogs.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../application/auth_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -32,17 +33,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  bool _validateInputs() {
+  bool _validateInputs(AppLocalizations l) {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in both fields.');
+      setState(() => _errorMessage = l.farm_setup_both_fields_required);
       return false;
     }
     final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
     if (!emailRegex.hasMatch(email)) {
-      setState(() => _errorMessage = 'Please enter a valid email address.');
+      setState(() => _errorMessage = l.auth_signup_error_invalid_email);
       return false;
     }
     return true;
@@ -57,8 +58,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_validateInputs()) return;
+  Future<void> _submit(AppLocalizations l) async {
+    if (!_validateInputs(l)) return;
     setState(() => _isLoading = true);
     try {
       await ref.read(authRepositoryProvider).signInWithEmail(
@@ -67,8 +68,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
     } catch (e) {
       if (mounted) {
+        final raw = e.toString();
+        String message;
+        if (raw.contains('Invalid email or password')) {
+          message = l.auth_login_error_invalid_credentials;
+        } else if (raw.contains('invalid-email') ||
+            raw.contains('The email address is not valid')) {
+          message = l.auth_signup_error_invalid_email;
+        } else {
+          message = l.auth_login_error_generic;
+        }
         setState(() {
-          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _errorMessage = message;
         });
       }
     } finally {
@@ -81,6 +92,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final l = AppLocalizations.of(context);
 
     return Scaffold(
       body: Stack(
@@ -125,13 +137,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Farm CRM',
+                      l.auth_login_title,
                       style: textTheme.headlineLarge,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sign in to your farm',
+                      l.auth_login_subtitle,
                       style: textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -139,7 +151,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    Text('Email', style: textTheme.labelLarge),
+                    Text(l.auth_login_email_label, style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _emailController,
@@ -149,13 +161,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    Text('Password', style: textTheme.labelLarge),
+                    Text(l.auth_login_password_label,
+                        style: textTheme.labelLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _passwordController,
                       obscureText: !_isPasswordVisible,
                       decoration: InputDecoration(
-                        hintText: 'Password',
+                        hintText: l.auth_login_password_label,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
@@ -182,7 +195,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     const SizedBox(height: 24),
                     FilledButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: _isLoading ? null : () => _submit(l),
                       child: _isLoading
                           ? SizedBox(
                               height: 20,
@@ -192,24 +205,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 strokeWidth: 2.5,
                               ),
                             )
-                          : const Text('Sign in'),
+                          : Text(l.auth_login_submit),
                     ),
                     const SizedBox(height: 16),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Don't have an account?",
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/signup'),
-                          child: const Text('Sign up'),
-                        ),
-                      ],
+                    Center(
+                      child: TextButton(
+                        onPressed: () => context.go('/signup'),
+                        child: Text(l.auth_login_no_account_cta),
+                      ),
                     ),
                   ],
                 ),

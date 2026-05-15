@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/user_display.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../farms/application/farm_providers.dart';
@@ -150,10 +151,19 @@ class _AreaGroup extends StatelessWidget {
           if (s.assignedUserIds.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 24, bottom: 8),
-              child: Text(
-                s.assignedUserIds.join(', '),
+              child: DefaultTextStyle.merge(
                 style: textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (var i = 0; i < s.assignedUserIds.length; i++) ...[
+                      if (i > 0) const Text(','),
+                      UserDisplay(userId: s.assignedUserIds[i]),
+                    ],
+                  ],
                 ),
               ),
             ),

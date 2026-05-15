@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/user_display.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
@@ -122,9 +123,10 @@ class _TaskCard extends ConsumerWidget {
         overdue ? colorScheme.errorContainer : colorScheme.primaryContainer;
     final dueText = l.task_card_due(DateFormat.MMMd(localeCode).format(due));
     final assigned = task.assignedTo;
-    final assignedText = assigned == null
-        ? ''
-        : ' · ${l.task_card_assigned_to(assigned.kind, assigned.id)}';
+    final subtitleStyle = textTheme.bodyMedium?.copyWith(
+      color: overdue ? colorScheme.error : colorScheme.onSurfaceVariant,
+      fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
+    );
 
     return Card(
       child: ListTile(
@@ -142,11 +144,30 @@ class _TaskCard extends ConsumerWidget {
           child: Icon(_icon(task.type), size: 20, color: iconColor),
         ),
         title: Text(task.title, style: textTheme.titleMedium),
-        subtitle: Text(
-          '$dueText$assignedText',
-          style: textTheme.bodyMedium?.copyWith(
-            color: overdue ? colorScheme.error : colorScheme.onSurfaceVariant,
-            fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
+        subtitle: DefaultTextStyle.merge(
+          style: subtitleStyle,
+          child: Row(
+            children: [
+              Flexible(child: Text(dueText, overflow: TextOverflow.ellipsis)),
+              if (assigned != null) ...[
+                const Text(' · '),
+                if (assigned.kind == 'user')
+                  Flexible(
+                    child: UserDisplay(
+                      userId: assigned.id,
+                      style: subtitleStyle,
+                      maxLines: 1,
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: Text(
+                      l.task_card_assigned_to(assigned.kind, assigned.id),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ],
           ),
         ),
         trailing: IconButton(

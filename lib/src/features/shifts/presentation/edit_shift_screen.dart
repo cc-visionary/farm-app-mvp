@@ -4,6 +4,7 @@ import 'package:iconsax/iconsax.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/user_display.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -263,7 +264,7 @@ class _EditShiftScreenState extends ConsumerState<EditShiftScreen> {
                 children: workers
                     .map(
                       (m) => FilterChip(
-                        label: Text(m.userId),
+                        label: UserDisplay(userId: m.userId),
                         selected: _workerIds.contains(m.userId),
                         onSelected: (sel) => setState(
                           () => sel

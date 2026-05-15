@@ -5,6 +5,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/user_display.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
@@ -163,7 +164,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                     .map(
                       (m) => DropdownMenuItem(
                         value: m.userId,
-                        child: Text(m.userId),
+                        child: UserDisplay(userId: m.userId),
                       ),
                     )
                     .toList(),

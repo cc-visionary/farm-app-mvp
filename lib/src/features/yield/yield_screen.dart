@@ -194,9 +194,13 @@ class YieldScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // RepaintBoundary so chart isolates raster work from
+                    // surrounding card content.
                     SizedBox(
                       height: 180,
-                      child: _AreaBarChart(byArea: m.byArea),
+                      child: RepaintBoundary(
+                        child: _AreaBarChart(byArea: m.byArea),
+                      ),
                     ),
                   ],
                 ],

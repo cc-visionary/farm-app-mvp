@@ -131,6 +131,45 @@ merging `feature/swine-crm-foundation`.
 
 ---
 
+## Sub-project C — Bilingual & Polish
+
+### i18n
+- [ ] Set device language to Filipino. Cold-launch app — every primary screen renders in Tagalog. No `?key_name?` placeholders anywhere.
+- [ ] Settings → Language → English. App immediately switches to English; persists across restart.
+- [ ] Settings → Language → Filipino on an English phone. App switches to Tagalog; persists.
+- [ ] Settings → Language → System. App reverts to OS locale.
+- [ ] Numbers: `₱48,000` renders identically in en + fil. Dates: "May 15, 2026" (en) / "Mayo 15, 2026" (fil).
+- [ ] Plural: 1 pig / 12 pigs (en); 1 baboy / 12 baboy (fil).
+
+### Polish — Activity on update
+- [ ] Edit a pig's name → Activity feed shows "pig_updated" entry.
+- [ ] Edit equipment status via dedicated edit screen (not quick-toggle) → "equipment_updated" entry.
+- [ ] Edit a supply's threshold → "supply_updated" entry.
+
+### Polish — UserDisplay
+- [ ] Workers see real display names (not Firebase UIDs) in:
+  - Shift worker chips (Edit shift screen)
+  - Roster widget on dashboard
+  - Task assignment dropdown (Create task)
+  - Task card "assigned to" subtitle
+
+### Polish — Photo upload errors
+- [ ] Toggle airplane mode mid-photo-upload → SnackBar "Couldn't upload photo. Will retry when online." within 2 seconds.
+- [ ] (If feasible) Simulate permission-denied → SnackBar "Couldn't upload photo: permission-denied." Queue does NOT retain this entry on next flush.
+
+### Polish — Pie chart legend
+- [ ] Open Batch Profitability for a batch with multiple cost categories.
+- [ ] Pie shows percentages only on slices ≥ 8%; smaller slices have no in-slice text.
+- [ ] Below the pie, a legend with color squares, category labels, and currency values is readable.
+
+### Perf
+- [ ] App cold-starts on the target device in a "feels acceptable" time (record actual number in perf-audit doc).
+- [ ] Scrolling the Pigs list on a 50-pig seed feels smooth.
+- [ ] Batch P&L screen with charts renders without visible lag.
+- [ ] No `Image.network` warnings; all images go through `cached_network_image`.
+
+---
+
 ## Sign-off
 
 - [ ] All sections above pass on a real Android device against the production Firebase project.

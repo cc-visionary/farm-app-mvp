@@ -275,10 +275,14 @@ class _CostPie extends StatelessWidget {
 
     return Column(
       children: [
-        SizedBox(
-          height: 220,
-          child: PieChart(
-            PieChartData(sections: sections, centerSpaceRadius: 32),
+        // Wrap chart in RepaintBoundary so unrelated rebuilds (legend, title)
+        // don't trigger a chart repaint. Charts are raster-thread hot.
+        RepaintBoundary(
+          child: SizedBox(
+            height: 220,
+            child: PieChart(
+              PieChartData(sections: sections, centerSpaceRadius: 32),
+            ),
           ),
         ),
         const SizedBox(height: 16),

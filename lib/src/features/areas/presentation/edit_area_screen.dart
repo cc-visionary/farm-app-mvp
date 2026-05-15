@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/area_providers.dart';
 import '../domain/area.dart';
@@ -38,11 +39,12 @@ class _S extends ConsumerState<EditAreaScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     if (farmId == null) return;
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Area name is required.')),
+        SnackBar(content: Text(l.area_form_name_required)),
       );
       return;
     }
@@ -72,9 +74,10 @@ class _S extends ConsumerState<EditAreaScreen> {
   }
 
   Future<void> _addPen() async {
+    final l = AppLocalizations.of(context);
     if (_savedAreaId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Save area first before adding pens.')),
+        SnackBar(content: Text(l.area_form_save_first_for_pens)),
       );
       return;
     }
@@ -85,19 +88,19 @@ class _S extends ConsumerState<EditAreaScreen> {
       final result = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Add pen'),
+          title: Text(l.pen_dialog_title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameCtl,
-                decoration: const InputDecoration(labelText: 'Pen name'),
+                decoration: InputDecoration(labelText: l.pen_dialog_name_label),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: capCtl,
-                decoration: const InputDecoration(
-                  labelText: 'Capacity (optional)',
+                decoration: InputDecoration(
+                  labelText: l.pen_dialog_capacity_label,
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -106,7 +109,7 @@ class _S extends ConsumerState<EditAreaScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text(l.common_cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
@@ -120,7 +123,7 @@ class _S extends ConsumerState<EditAreaScreen> {
         if (name.isEmpty) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Pen name is required.')),
+              SnackBar(content: Text(l.pen_dialog_name_required)),
             );
           }
           return;
@@ -129,8 +132,8 @@ class _S extends ConsumerState<EditAreaScreen> {
         if (capCtl.text.trim().isNotEmpty && (cap == null || cap < 1)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Capacity must be a positive whole number.'),
+              SnackBar(
+                content: Text(l.pen_dialog_capacity_positive),
               ),
             );
           }
@@ -152,40 +155,43 @@ class _S extends ConsumerState<EditAreaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_savedAreaId == null ? 'New area' : 'Edit area'),
+        title: Text(_savedAreaId == null ? l.area_add_title : l.area_edit_title),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Name'),
+            SectionHeader(title: l.area_form_name_label),
             TextField(
               controller: _name,
               decoration: const InputDecoration(hintText: 'e.g. Gestation A'),
             ),
-            const SectionHeader(title: 'Purpose'),
+            SectionHeader(title: l.area_form_purpose_label),
             DropdownButtonFormField<AreaPurpose>(
               initialValue: _purpose,
               decoration: const InputDecoration(),
               items: AreaPurpose.values
                   .map(
-                    (p) =>
-                        DropdownMenuItem(value: p, child: Text(p.label)),
+                    (p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(localizedAreaPurpose(l, p)),
+                    ),
                   )
                   .toList(),
               onChanged: (v) =>
                   setState(() => _purpose = v ?? AreaPurpose.other),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.area_form_notes_label),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -200,14 +206,18 @@ class _S extends ConsumerState<EditAreaScreen> {
                         strokeWidth: 2.5,
                       ),
                     )
-                  : Text(_savedAreaId == null ? 'Save area' : 'Save changes'),
+                  : Text(
+                      _savedAreaId == null
+                          ? l.area_form_submit_add
+                          : l.area_form_submit_edit,
+                    ),
             ),
             if (_savedAreaId != null && farmId != null) ...[
               SectionHeader(
-                title: 'Pens',
+                title: l.area_form_pens_section,
                 trailing: IconButton(
                   icon: const Icon(Iconsax.add),
-                  tooltip: 'Add pen',
+                  tooltip: l.pen_dialog_title,
                   onPressed: _addPen,
                 ),
               ),
@@ -227,6 +237,7 @@ class _PenList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -258,8 +269,11 @@ class _PenList extends ConsumerWidget {
                     title: Text(p.name, style: textTheme.titleMedium),
                     subtitle: Text(
                       p.capacity == null
-                          ? 'Capacity: —'
-                          : 'Occupancy: ${p.currentOccupancy} / ${p.capacity}',
+                          ? l.pen_card_capacity_unknown
+                          : l.pen_card_occupancy(
+                              p.currentOccupancy,
+                              p.capacity!,
+                            ),
                       style: textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -269,14 +283,14 @@ class _PenList extends ConsumerWidget {
                         Iconsax.trash,
                         color: colorScheme.error,
                       ),
-                      tooltip: 'Delete pen',
+                      tooltip: l.common_delete,
                       onPressed: () async {
                         final ok = await ConfirmDialog.show(
                           context: context,
                           title: 'Delete pen?',
                           message:
                               'Delete pen "${p.name}"? This cannot be undone.',
-                          confirmLabel: 'Delete',
+                          confirmLabel: l.common_delete,
                           destructive: true,
                         );
                         if (ok) {

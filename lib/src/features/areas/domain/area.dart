@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum AreaPurpose {
   breeding('breeding', 'Breeding'),
   gestation('gestation', 'Gestation'),
@@ -60,4 +62,27 @@ class Area {
     if (notes != null) 'notes': notes,
     'createdAt': createdAt,
   };
+}
+
+String localizedAreaPurpose(AppLocalizations l, AreaPurpose p) {
+  switch (p) {
+    case AreaPurpose.breeding:
+      return l.area_purpose_breeding;
+    case AreaPurpose.gestation:
+      return l.area_purpose_gestation;
+    case AreaPurpose.farrowing:
+      return l.area_purpose_farrowing;
+    case AreaPurpose.nursery:
+      return l.area_purpose_nursery;
+    case AreaPurpose.growFinish:
+      return l.area_purpose_grow_finish;
+    case AreaPurpose.quarantine:
+      return l.area_purpose_quarantine;
+    case AreaPurpose.boarPen:
+      return l.area_purpose_boar_pen;
+    case AreaPurpose.isolation:
+      return l.area_purpose_isolation;
+    case AreaPurpose.other:
+      return l.area_purpose_other;
+  }
 }

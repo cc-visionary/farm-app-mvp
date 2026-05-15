@@ -5,6 +5,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -38,12 +39,13 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
     if (_title.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Title is required.')),
+        SnackBar(content: Text(l.task_create_title_required)),
       );
       return;
     }
@@ -68,6 +70,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -81,24 +84,24 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             const <Area>[]
         : const <Area>[];
     return Scaffold(
-      appBar: AppBar(title: const Text('New task')),
+      appBar: AppBar(title: Text(l.task_create_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Title'),
+            SectionHeader(title: l.task_create_title_label),
             TextField(
               controller: _title,
               decoration: const InputDecoration(hintText: 'e.g. Vaccinate sows'),
             ),
-            const SectionHeader(title: 'Description'),
+            SectionHeader(title: l.task_create_description_label),
             TextField(
               controller: _desc,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               maxLines: 3,
             ),
-            const SectionHeader(title: 'Due date'),
+            SectionHeader(title: l.task_create_due_date_label),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -128,16 +131,22 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 },
               ),
             ),
-            const SectionHeader(title: 'Assign to'),
+            SectionHeader(title: l.task_create_assign_to_label),
             DropdownButtonFormField<String?>(
               initialValue: _assignKind,
               decoration: const InputDecoration(),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('— Unassigned —')),
-                DropdownMenuItem(value: 'user', child: Text('Specific user')),
+              items: [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(l.task_create_assign_none),
+                ),
+                DropdownMenuItem(
+                  value: 'user',
+                  child: Text(l.task_create_assign_user),
+                ),
                 DropdownMenuItem(
                   value: 'area',
-                  child: Text('Any worker in an area'),
+                  child: Text(l.task_create_assign_area),
                 ),
               ],
               onChanged: (v) => setState(() {
@@ -149,7 +158,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _assignId,
-                decoration: const InputDecoration(hintText: 'Select user'),
+                decoration: InputDecoration(hintText: l.task_create_user_label),
                 items: members
                     .map(
                       (m) => DropdownMenuItem(
@@ -165,7 +174,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _assignId,
-                decoration: const InputDecoration(hintText: 'Select area'),
+                decoration: InputDecoration(hintText: l.task_create_area_label),
                 items: areas
                     .map(
                       (a) => DropdownMenuItem(
@@ -189,7 +198,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                         strokeWidth: 2.5,
                       ),
                     )
-                  : const Text('Create task'),
+                  : Text(l.task_create_submit),
             ),
           ],
         ),

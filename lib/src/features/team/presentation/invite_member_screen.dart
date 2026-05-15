@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/team_providers.dart';
@@ -25,11 +26,12 @@ class _S extends ConsumerState<InviteMemberScreen> {
   }
 
   Future<void> _send() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
     if (_email.text.trim().isEmpty) {
-      setState(() => _error = 'Email required.');
+      setState(() => _error = l.invite_member_email_required);
       return;
     }
     setState(() {
@@ -54,36 +56,53 @@ class _S extends ConsumerState<InviteMemberScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Invite member')),
+      appBar: AppBar(title: Text(l.invite_member_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Email'),
+            SectionHeader(title: l.invite_member_email_label),
             TextField(
               controller: _email,
               keyboardType: TextInputType.emailAddress,
               autocorrect: false,
               decoration: const InputDecoration(hintText: 'name@example.com'),
             ),
-            const SectionHeader(title: 'Role'),
+            SectionHeader(title: l.invite_member_role_label),
             // Owner role omitted intentionally: only one owner per farm;
             // ownership transfer is a separate flow.
             DropdownButtonFormField<Role>(
               initialValue: _role,
               decoration: const InputDecoration(),
-              items: const [
-                DropdownMenuItem(value: Role.manager, child: Text('Manager')),
-                DropdownMenuItem(value: Role.worker, child: Text('Worker')),
-                DropdownMenuItem(value: Role.vet, child: Text('Veterinarian')),
+              items: [
+                DropdownMenuItem(
+                  value: Role.manager,
+                  child: Text(localizedRole(l, Role.manager)),
+                ),
+                DropdownMenuItem(
+                  value: Role.worker,
+                  child: Text(localizedRole(l, Role.worker)),
+                ),
+                DropdownMenuItem(
+                  value: Role.vet,
+                  child: Text(localizedRole(l, Role.vet)),
+                ),
               ],
               onChanged: (v) => setState(() => _role = v ?? Role.worker),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l.invite_member_owner_omitted_note,
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),
@@ -106,7 +125,7 @@ class _S extends ConsumerState<InviteMemberScreen> {
                         strokeWidth: 2.5,
                       ),
                     )
-                  : const Text('Send invitation'),
+                  : Text(l.invite_member_submit),
             ),
           ],
         ),

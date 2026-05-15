@@ -265,6 +265,7 @@ class _NavDrawer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Drawer(
       child: SafeArea(
@@ -274,7 +275,7 @@ class _NavDrawer extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
               child: Text(
-                'Farm CRM',
+                l.nav_drawer_title,
                 style: theme.textTheme.headlineSmall,
               ),
             ),
@@ -282,20 +283,20 @@ class _NavDrawer extends ConsumerWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  _item(context, Iconsax.pet, 'Pigs', '/pigs'),
-                  _item(context, Iconsax.task_square, 'Tasks', '/tasks'),
-                  _item(context, Iconsax.element_3, 'Farm layout', '/layout'),
-                  _item(context, Iconsax.chart_2, 'Yield reports', '/yield'),
-                  _item(context, Iconsax.activity, 'Activity', '/activity'),
+                  _item(context, Iconsax.pet, l.nav_pigs, '/pigs'),
+                  _item(context, Iconsax.task_square, l.nav_tasks, '/tasks'),
+                  _item(context, Iconsax.element_3, l.nav_farm_layout, '/layout'),
+                  _item(context, Iconsax.chart_2, l.nav_yield_reports, '/yield'),
+                  _item(context, Iconsax.activity, l.nav_activity, '/activity'),
                   const Divider(),
-                  _item(context, Iconsax.location, 'Areas', '/areas'),
-                  _item(context, Iconsax.setting_4, 'Equipment', '/equipment'),
-                  _item(context, Iconsax.calendar, 'Shifts', '/shifts'),
-                  _item(context, Iconsax.people, 'Team', '/team'),
+                  _item(context, Iconsax.location, l.nav_areas, '/areas'),
+                  _item(context, Iconsax.setting_4, l.nav_equipment, '/equipment'),
+                  _item(context, Iconsax.calendar, l.nav_shifts, '/shifts'),
+                  _item(context, Iconsax.people, l.nav_team, '/team'),
                   const Divider(),
                   ListTile(
                     leading: const Icon(Iconsax.logout),
-                    title: const Text('Sign out'),
+                    title: Text(l.common_sign_out),
                     onTap: () async {
                       // Router redirect handles post-sign-out navigation when
                       // the auth state changes to null — no manual go() needed.

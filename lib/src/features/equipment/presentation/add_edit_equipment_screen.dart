@@ -5,6 +5,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../authentication/application/auth_providers.dart';
@@ -55,6 +56,7 @@ class _AddEditEquipmentScreenState
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -62,7 +64,7 @@ class _AddEditEquipmentScreenState
     final trimmedName = _name.text.trim();
     if (trimmedName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Equipment name is required.')),
+        SnackBar(content: Text(l.equipment_form_name_required)),
       );
       return;
     }
@@ -73,8 +75,8 @@ class _AddEditEquipmentScreenState
       cost = double.tryParse(costText);
       if (cost == null || cost < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Purchase cost must be a non-negative number.'),
+          SnackBar(
+            content: Text(l.common_must_be_positive),
           ),
         );
         return;
@@ -125,6 +127,7 @@ class _AddEditEquipmentScreenState
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -134,41 +137,46 @@ class _AddEditEquipmentScreenState
         : const AsyncValue<List<Area>>.data([]);
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text(widget.existing == null ? 'New equipment' : 'Edit equipment'),
+        title: Text(
+          widget.existing == null
+              ? l.equipment_add_title
+              : l.equipment_edit_title,
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Name'),
+            SectionHeader(title: l.equipment_form_name_label),
             TextField(
               controller: _name,
               decoration: const InputDecoration(hintText: 'e.g. Feeder A'),
             ),
-            const SectionHeader(title: 'Type'),
+            SectionHeader(title: l.equipment_form_type_label),
             DropdownButtonFormField<EquipmentType>(
               initialValue: _type,
               decoration: const InputDecoration(),
               items: EquipmentType.values
                   .map(
-                    (t) =>
-                        DropdownMenuItem(value: t, child: Text(t.label)),
+                    (t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(localizedEquipmentType(l, t)),
+                    ),
                   )
                   .toList(),
               onChanged: (v) =>
                   setState(() => _type = v ?? EquipmentType.other),
             ),
-            const SectionHeader(title: 'Area'),
+            SectionHeader(title: l.equipment_form_area_label),
             areasAsync.when(
               data: (areas) => DropdownButtonFormField<String?>(
                 initialValue: _areaId,
                 decoration: const InputDecoration(),
                 items: [
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('— No area —'),
+                    child: Text(l.equipment_form_area_none),
                   ),
                   ...areas.map(
                     (a) => DropdownMenuItem<String?>(
@@ -187,20 +195,22 @@ class _AddEditEquipmentScreenState
                 ),
               ),
             ),
-            const SectionHeader(title: 'Status'),
+            SectionHeader(title: l.equipment_form_status_label),
             DropdownButtonFormField<EquipmentStatus>(
               initialValue: _status,
               decoration: const InputDecoration(),
               items: EquipmentStatus.values
                   .map(
-                    (s) =>
-                        DropdownMenuItem(value: s, child: Text(s.label)),
+                    (s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(localizedEquipmentStatus(l, s)),
+                    ),
                   )
                   .toList(),
               onChanged: (v) =>
                   setState(() => _status = v ?? EquipmentStatus.available),
             ),
-            const SectionHeader(title: 'Purchase date'),
+            SectionHeader(title: l.equipment_form_purchase_date_label),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -213,7 +223,7 @@ class _AddEditEquipmentScreenState
                 ),
                 title: Text(
                   _purchaseDate == null
-                      ? 'Optional'
+                      ? l.equipment_form_purchase_date_none
                       : DateFormat.yMMMd().format(_purchaseDate!),
                   style: _purchaseDate == null
                       ? textTheme.bodyMedium?.copyWith(
@@ -238,16 +248,16 @@ class _AddEditEquipmentScreenState
                 },
               ),
             ),
-            const SectionHeader(title: 'Purchase cost (PHP)'),
+            SectionHeader(title: l.equipment_form_cost_label),
             TextField(
               controller: _cost,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.equipment_form_notes_label),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -262,7 +272,7 @@ class _AddEditEquipmentScreenState
                         strokeWidth: 2.5,
                       ),
                     )
-                  : const Text('Save'),
+                  : Text(l.equipment_form_submit),
             ),
           ],
         ),

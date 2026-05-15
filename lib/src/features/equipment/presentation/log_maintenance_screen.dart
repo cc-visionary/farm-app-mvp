@@ -5,6 +5,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/equipment_providers.dart';
@@ -37,6 +38,7 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -47,8 +49,8 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
       cost = double.tryParse(costText);
       if (cost == null || cost < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cost must be a non-negative number.'),
+          SnackBar(
+            content: Text(l.common_must_be_positive),
           ),
         );
         return;
@@ -98,27 +100,31 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Log maintenance')),
+      appBar: AppBar(title: Text(l.maintenance_log_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Type'),
+            SectionHeader(title: l.equipment_form_type_label),
             SegmentedButton<MaintenanceType>(
               segments: MaintenanceType.values
                   .map(
-                    (t) => ButtonSegment(value: t, label: Text(t.label)),
+                    (t) => ButtonSegment(
+                      value: t,
+                      label: Text(localizedMaintenanceType(l, t)),
+                    ),
                   )
                   .toList(),
               selected: {_type},
               onSelectionChanged: (s) => setState(() => _type = s.first),
             ),
-            const SectionHeader(title: 'Date'),
+            SectionHeader(title: l.common_date),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -148,27 +154,27 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
                 },
               ),
             ),
-            const SectionHeader(title: 'Performed by'),
+            SectionHeader(title: l.maintenance_log_performed_by_label),
             TextField(
               controller: _performedBy,
               decoration:
-                  const InputDecoration(hintText: 'Technician name (optional)'),
+                  InputDecoration(hintText: l.common_optional),
             ),
-            const SectionHeader(title: 'Parts replaced'),
+            SectionHeader(title: l.maintenance_log_parts_label),
             TextField(
               controller: _parts,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
             ),
-            const SectionHeader(title: 'Cost (PHP)'),
+            SectionHeader(title: l.maintenance_log_cost_label),
             TextField(
               controller: _cost,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.maintenance_log_notes_label),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.common_optional),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -183,7 +189,7 @@ class _LogMaintenanceScreenState extends ConsumerState<LogMaintenanceScreen> {
                         strokeWidth: 2.5,
                       ),
                     )
-                  : const Text('Save maintenance'),
+                  : Text(l.maintenance_log_submit),
             ),
           ],
         ),

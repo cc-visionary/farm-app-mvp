@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -17,6 +18,7 @@ class TasksScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final user = ref.watch(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return const SizedBox.shrink();
@@ -31,11 +33,11 @@ class TasksScreen extends ConsumerWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Tasks'),
-          bottom: const TabBar(
+          title: Text(l.tasks_screen_title),
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'My tasks'),
-              Tab(text: 'All open'),
+              Tab(text: l.tasks_tab_my),
+              Tab(text: l.tasks_tab_all),
             ],
           ),
         ),
@@ -48,7 +50,7 @@ class TasksScreen extends ConsumerWidget {
                   ),
                 ),
                 icon: const Icon(Iconsax.add),
-                label: const Text('New task'),
+                label: Text(l.task_create_title),
               )
             : null,
         body: TabBarView(
@@ -74,6 +76,7 @@ class _TaskList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final tasksAsync = onlyMine
         ? ref.watch(myTasksStreamProvider((farmId: farmId, userId: userId)))
         : ref.watch(openTasksStreamProvider(farmId));
@@ -82,7 +85,7 @@ class _TaskList extends ConsumerWidget {
         if (tasks.isEmpty) {
           return EmptyState(
             icon: Iconsax.task_square,
-            title: onlyMine ? 'No tasks for you' : 'No open tasks',
+            title: onlyMine ? l.tasks_empty_my : l.tasks_empty_all,
             subtitle: onlyMine
                 ? "When something needs your attention, it'll show up here."
                 : 'All caught up. New tasks will appear here.',
@@ -106,6 +109,8 @@ class _TaskCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
+    final localeCode = Localizations.localeOf(context).toString();
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -115,6 +120,11 @@ class _TaskCard extends ConsumerWidget {
     final iconColor = overdue ? colorScheme.error : colorScheme.primary;
     final iconBg =
         overdue ? colorScheme.errorContainer : colorScheme.primaryContainer;
+    final dueText = l.task_card_due(DateFormat.MMMd(localeCode).format(due));
+    final assigned = task.assignedTo;
+    final assignedText = assigned == null
+        ? ''
+        : ' · ${l.task_card_assigned_to(assigned.kind, assigned.id)}';
 
     return Card(
       child: ListTile(
@@ -133,8 +143,7 @@ class _TaskCard extends ConsumerWidget {
         ),
         title: Text(task.title, style: textTheme.titleMedium),
         subtitle: Text(
-          'Due ${DateFormat.MMMd().format(due)}'
-          '${task.assignedTo == null ? "" : " · ${task.assignedTo!.kind}:${task.assignedTo!.id}"}',
+          '$dueText$assignedText',
           style: textTheme.bodyMedium?.copyWith(
             color: overdue ? colorScheme.error : colorScheme.onSurfaceVariant,
             fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
@@ -142,7 +151,7 @@ class _TaskCard extends ConsumerWidget {
         ),
         trailing: IconButton(
           icon: Icon(Iconsax.tick_circle, color: colorScheme.primary),
-          tooltip: 'Mark complete',
+          tooltip: l.task_card_mark_complete,
           onPressed: () async {
             final user = ref.read(authStateChangesProvider).asData?.value;
             if (user == null) return;

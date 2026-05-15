@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/shift_providers.dart';
 import '../domain/shift.dart';
@@ -14,6 +15,7 @@ class ShiftsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -21,20 +23,20 @@ class ShiftsScreen extends ConsumerWidget {
     if (farmId == null) return const SizedBox.shrink();
     final shiftsAsync = ref.watch(shiftsStreamProvider(farmId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Shifts & roster')),
+      appBar: AppBar(title: Text(l.shifts_screen_title)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EditShiftScreen()),
         ),
         icon: const Icon(Iconsax.add),
-        label: const Text('New shift'),
+        label: Text(l.shift_add_title),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
         children: [
           const RosterWidget(),
-          const SectionHeader(title: 'All shifts'),
+          SectionHeader(title: l.shifts_section_all_shifts),
           shiftsAsync.when(
             data: (shifts) {
               if (shifts.isEmpty) {
@@ -51,7 +53,7 @@ class ShiftsScreen extends ConsumerWidget {
                       ),
                     ),
                     icon: const Icon(Iconsax.add),
-                    label: const Text('Create shift'),
+                    label: Text(l.shift_add_title),
                   ),
                 );
               }
@@ -77,16 +79,17 @@ class ShiftsScreen extends ConsumerWidget {
 class _ShiftCard extends StatelessWidget {
   const _ShiftCard({required this.shift});
   final Shift shift;
-  static const _dowLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final daysSet = shift.pattern == ShiftPattern.daily
         ? {0, 1, 2, 3, 4, 5, 6}
         : shift.daysOfWeek.toSet();
+    final dowLabels = shiftDowLabels(l);
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -152,7 +155,7 @@ class _ShiftCard extends StatelessWidget {
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      _dowLabels[i],
+                      dowLabels[i],
                       style: textTheme.labelMedium?.copyWith(
                         color: on
                             ? colorScheme.onPrimary

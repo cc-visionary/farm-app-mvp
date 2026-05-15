@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum TaskType {
   pregnancyCheck('pregnancy_check', 'Pregnancy check'),
   farrowingPrep('farrowing_prep', 'Farrowing prep'),
@@ -135,4 +137,21 @@ class FarmTask {
         if (completedAt != null) 'completedAt': completedAt,
         'createdAt': createdAt,
       };
+}
+
+String localizedTaskType(AppLocalizations l, TaskType t) {
+  switch (t) {
+    case TaskType.pregnancyCheck:
+      return l.task_type_pregnancy_check;
+    case TaskType.farrowingPrep:
+      return l.task_type_farrowing_prep;
+    case TaskType.farrowingExpected:
+      return l.task_type_farrowing_expected;
+    case TaskType.vaccinationDue:
+      return l.task_type_vaccination_due;
+    case TaskType.withdrawalEnd:
+      return l.task_type_withdrawal_end;
+    case TaskType.manual:
+      return l.task_type_manual;
+  }
 }

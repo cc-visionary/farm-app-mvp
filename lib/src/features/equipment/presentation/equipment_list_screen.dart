@@ -5,6 +5,7 @@ import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
@@ -26,6 +27,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -41,7 +43,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     final equipmentAsync = ref.watch(equipmentStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Equipment')),
+      appBar: AppBar(title: Text(l.equipment_list_title)),
       floatingActionButton: PermissionService.canEditEquipment(role)
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.push(
@@ -51,7 +53,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                 ),
               ),
               icon: const Icon(Iconsax.add),
-              label: const Text('New'),
+              label: Text(l.equipment_list_fab_add),
             )
           : null,
       body: Column(
@@ -63,7 +65,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
               runSpacing: 8,
               children: [
                 FilterChip(
-                  label: const Text('Needs repair'),
+                  label: Text(l.equipment_list_filter_needs_repair),
                   selected: _statusFilter == EquipmentStatus.needsRepair,
                   onSelected: (sel) => setState(
                     () => _statusFilter =
@@ -71,14 +73,14 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                   ),
                 ),
                 FilterChip(
-                  label: const Text('In use'),
+                  label: Text(l.equipment_list_filter_in_use),
                   selected: _statusFilter == EquipmentStatus.inUse,
                   onSelected: (sel) => setState(
                     () => _statusFilter = sel ? EquipmentStatus.inUse : null,
                   ),
                 ),
                 FilterChip(
-                  label: const Text('Available'),
+                  label: Text(l.equipment_list_filter_available),
                   selected: _statusFilter == EquipmentStatus.available,
                   onSelected: (sel) => setState(
                     () =>
@@ -103,14 +105,8 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                 if (filtered.isEmpty) {
                   return EmptyState(
                     icon: Iconsax.setting_4,
-                    title: list.isEmpty
-                        ? 'No equipment yet'
-                        : 'No equipment matches filters',
-                    subtitle: list.isEmpty
-                        ? 'Track feeders, fans, and tools so you know what works and what needs repair.'
-                        : null,
-                    action: list.isEmpty &&
-                            PermissionService.canEditEquipment(role)
+                    title: l.equipment_list_empty_title,
+                    action: PermissionService.canEditEquipment(role)
                         ? FilledButton.icon(
                             onPressed: () => Navigator.push(
                               context,
@@ -119,7 +115,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                               ),
                             ),
                             icon: const Icon(Iconsax.add),
-                            label: const Text('Add equipment'),
+                            label: Text(l.equipment_list_fab_add),
                           )
                         : null,
                   );
@@ -135,7 +131,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                   children: [
                     for (final t in types) ...[
-                      SectionHeader(title: t.label),
+                      SectionHeader(title: localizedEquipmentType(l, t)),
                       ...byType[t]!.map(
                         (eq) => _EquipmentCard(
                           eq: eq,
@@ -207,12 +203,14 @@ class _EquipmentCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final canToggle = PermissionService.canQuickToggleEquipmentStatus(role);
     final actorName =
         ref.read(currentAppUserProvider).asData?.value?.displayName ?? '';
+    final typeLabel = localizedEquipmentType(l, eq.type);
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -235,8 +233,8 @@ class _EquipmentCard extends ConsumerWidget {
         title: Text(eq.name, style: textTheme.titleMedium),
         subtitle: Text(
           eq.areaId == null
-              ? eq.type.label
-              : '${eq.type.label} · area ${eq.areaId}',
+              ? typeLabel
+              : l.equipment_card_area_with_type(typeLabel, eq.areaId!),
           style: textTheme.bodyMedium?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),
@@ -258,7 +256,7 @@ class _EquipmentCard extends ConsumerWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              eq.status.label,
+              localizedEquipmentStatus(l, eq.status),
               style: textTheme.labelMedium?.copyWith(
                 color: _statusFg(context, eq.status),
                 fontWeight: FontWeight.w700,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/area_providers.dart';
 import '../domain/area.dart';
@@ -13,6 +14,7 @@ class AreasListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -21,30 +23,28 @@ class AreasListScreen extends ConsumerWidget {
     final areasAsync = ref.watch(areasStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Areas')),
+      appBar: AppBar(title: Text(l.areas_list_title)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EditAreaScreen()),
         ),
         icon: const Icon(Iconsax.add),
-        label: const Text('New area'),
+        label: Text(l.area_add_title),
       ),
       body: areasAsync.when(
         data: (areas) {
           if (areas.isEmpty) {
             return EmptyState(
               icon: Iconsax.location,
-              title: 'No areas yet',
-              subtitle:
-                  'Areas group pens by purpose — gestation, farrowing, nursery. Add your first one to start tracking.',
+              title: l.areas_list_empty,
               action: FilledButton.icon(
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const EditAreaScreen()),
                 ),
                 icon: const Icon(Iconsax.add),
-                label: const Text('Add area'),
+                label: Text(l.areas_list_fab_add),
               ),
             );
           }
@@ -61,7 +61,7 @@ class AreasListScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
             children: [
               for (final p in purposes) ...[
-                SectionHeader(title: p.label),
+                SectionHeader(title: localizedAreaPurpose(l, p)),
                 ...byPurpose[p]!.map(
                   (a) => Card(
                     child: ListTile(
@@ -84,7 +84,7 @@ class AreasListScreen extends ConsumerWidget {
                       ),
                       title: Text(a.name, style: textTheme.titleMedium),
                       subtitle: Text(
-                        a.purpose.label,
+                        localizedAreaPurpose(l, a.purpose),
                         style: textTheme.bodyMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),

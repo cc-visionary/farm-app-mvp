@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum ShiftPattern {
   daily('daily', 'Daily'),
   weekly('weekly', 'Weekly');
@@ -90,3 +92,24 @@ class Shift {
     return daysOfWeek.contains(dow);
   }
 }
+
+String localizedShiftPattern(AppLocalizations l, ShiftPattern p) {
+  switch (p) {
+    case ShiftPattern.daily:
+      return l.shift_pattern_daily;
+    case ShiftPattern.weekly:
+      return l.shift_pattern_weekly;
+  }
+}
+
+/// Single-letter day-of-week labels for the current locale, in S/M/T/W/T/F/S
+/// order (index 0 = Sunday … 6 = Saturday).
+List<String> shiftDowLabels(AppLocalizations l) => [
+      l.shift_dow_sun,
+      l.shift_dow_mon,
+      l.shift_dow_tue,
+      l.shift_dow_wed,
+      l.shift_dow_thu,
+      l.shift_dow_fri,
+      l.shift_dow_sat,
+    ];

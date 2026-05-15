@@ -6,10 +6,13 @@ import '../../../core/permissions/permission_service.dart';
 import '../../../core/permissions/role.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/stat_tile.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../team/application/team_providers.dart';
 import '../application/equipment_providers.dart';
+import '../domain/equipment.dart';
+import '../domain/maintenance_record.dart';
 import 'add_edit_equipment_screen.dart';
 import 'log_maintenance_screen.dart';
 
@@ -19,6 +22,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -40,7 +44,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Equipment'),
+        title: Text(l.equipment_detail_title),
         actions: [
           if (PermissionService.canEditEquipment(role))
             eqAsync.maybeWhen(
@@ -48,7 +52,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
                   ? const SizedBox.shrink()
                   : IconButton(
                       icon: const Icon(Iconsax.edit),
-                      tooltip: 'Edit',
+                      tooltip: l.common_edit,
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -64,7 +68,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
       floatingActionButton: PermissionService.canLogMaintenance(role)
           ? FloatingActionButton.extended(
               icon: const Icon(Iconsax.setting_4),
-              label: const Text('Log maintenance'),
+              label: Text(l.equipment_detail_fab_log),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -86,7 +90,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
               ),
             );
           }
-          final maintList = maintAsync.asData?.value ?? const [];
+          final maintList = maintAsync.asData?.value ?? const <MaintenanceRecord>[];
           final totalCost = maintList.fold<double>(
             0,
             (sum, m) => sum + (m.costPhp ?? 0),
@@ -108,17 +112,23 @@ class EquipmentDetailScreen extends ConsumerWidget {
                     children: [
                       Text(eq.name, style: textTheme.headlineSmall),
                       const SizedBox(height: 16),
-                      StatTile(label: 'Type', value: eq.type.label),
-                      StatTile(label: 'Status', value: eq.status.label),
+                      StatTile(
+                        label: l.equipment_form_type_label,
+                        value: localizedEquipmentType(l, eq.type),
+                      ),
+                      StatTile(
+                        label: l.equipment_form_status_label,
+                        value: localizedEquipmentStatus(l, eq.status),
+                      ),
                       if (eq.purchaseDate != null)
                         StatTile(
-                          label: 'Purchased',
+                          label: l.equipment_form_purchase_date_label,
                           value: DateFormat.yMMMd()
                               .format(eq.purchaseDate!.toDate()),
                         ),
                       if (eq.purchaseCostPhp != null)
                         StatTile(
-                          label: 'Purchase cost',
+                          label: l.equipment_form_cost_label,
                           value: currencyFmt.format(eq.purchaseCostPhp),
                         ),
                       if (eq.notes != null && eq.notes!.isNotEmpty) ...[
@@ -135,7 +145,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
                 ),
               ),
               SectionHeader(
-                title: 'Maintenance history',
+                title: l.equipment_detail_maintenance_history,
                 trailing: maintList.isEmpty
                     ? null
                     : Container(
@@ -148,7 +158,9 @@ class EquipmentDetailScreen extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'Total: ${currencyFmt.format(totalCost)}',
+                          l.equipment_detail_total_label(
+                            currencyFmt.format(totalCost),
+                          ),
                           style: textTheme.labelMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -162,7 +174,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'No maintenance logged yet.',
+                          l.equipment_detail_no_maintenance,
                           style: textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -193,7 +205,7 @@ class EquipmentDetailScreen extends ConsumerWidget {
                                 ),
                               ),
                               title: Text(
-                                m.type.label,
+                                localizedMaintenanceType(l, m.type),
                                 style: textTheme.titleMedium,
                               ),
                               subtitle: Text(

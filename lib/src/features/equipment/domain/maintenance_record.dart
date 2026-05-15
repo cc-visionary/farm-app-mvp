@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum MaintenanceType {
   preventive('preventive', 'Preventive'),
   repair('repair', 'Repair'),
@@ -75,4 +77,15 @@ class MaintenanceRecord {
         'createdBy': createdBy,
         'createdAt': createdAt,
       };
+}
+
+String localizedMaintenanceType(AppLocalizations l, MaintenanceType t) {
+  switch (t) {
+    case MaintenanceType.preventive:
+      return l.maintenance_type_preventive;
+    case MaintenanceType.repair:
+      return l.maintenance_type_repair;
+    case MaintenanceType.inspection:
+      return l.maintenance_type_inspection;
+  }
 }

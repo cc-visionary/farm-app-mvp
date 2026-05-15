@@ -128,7 +128,7 @@ class FarmLayoutScreen extends ConsumerWidget {
                               ),
                             ),
                             Chip(
-                              label: Text(a.purpose.label),
+                              label: Text(localizedAreaPurpose(l, a.purpose)),
                               padding: EdgeInsets.zero,
                             ),
                           ],

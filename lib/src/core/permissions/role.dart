@@ -1,3 +1,5 @@
+import '../../l10n/generated/app_localizations.dart';
+
 enum Role {
   owner('owner'),
   manager('manager'),
@@ -12,5 +14,18 @@ enum Role {
       (r) => r.value == s,
       orElse: () => Role.worker,
     );
+  }
+}
+
+String localizedRole(AppLocalizations l, Role r) {
+  switch (r) {
+    case Role.owner:
+      return l.team_role_owner;
+    case Role.manager:
+      return l.team_role_manager;
+    case Role.worker:
+      return l.team_role_worker;
+    case Role.vet:
+      return l.team_role_vet;
   }
 }

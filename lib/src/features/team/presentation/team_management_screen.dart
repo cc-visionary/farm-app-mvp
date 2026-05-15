@@ -6,6 +6,7 @@ import '../../../core/permissions/role.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/team_providers.dart';
 import 'invite_member_screen.dart';
@@ -15,13 +16,15 @@ class TeamManagementScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
+    final localeCode = Localizations.localeOf(context).toString();
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Team')),
+        appBar: AppBar(title: Text(l.team_screen_title)),
         body: const EmptyState(
           icon: Iconsax.people,
           title: 'No farm selected',
@@ -32,10 +35,10 @@ class TeamManagementScreen extends ConsumerWidget {
     final invitationsAsync = ref.watch(invitationsStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Team')),
+      appBar: AppBar(title: Text(l.team_screen_title)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.user_add),
-        label: const Text('Invite'),
+        label: Text(l.team_fab_invite),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const InviteMemberScreen()),
@@ -44,7 +47,7 @@ class TeamManagementScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
         children: [
-          const SectionHeader(title: 'Members'),
+          SectionHeader(title: l.team_section_members),
           membersAsync.when(
             data: (members) {
               if (members.isEmpty) {
@@ -115,7 +118,7 @@ class TeamManagementScreen extends ConsumerWidget {
                                       },
                                     ),
                                     Text(
-                                      m.role.value,
+                                      localizedRole(l, m.role),
                                       style: textTheme.bodyMedium?.copyWith(
                                         color: colorScheme.onSurfaceVariant,
                                       ),
@@ -141,7 +144,7 @@ class TeamManagementScreen extends ConsumerWidget {
                                     .map(
                                       (r) => DropdownMenuItem(
                                         value: r,
-                                        child: Text(r.value),
+                                        child: Text(localizedRole(l, r)),
                                       ),
                                     )
                                     .toList(),
@@ -171,7 +174,7 @@ class TeamManagementScreen extends ConsumerWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionHeader(title: 'Pending invitations'),
+                  SectionHeader(title: l.team_section_invitations),
                   ...pending.map(
                     (inv) => Card(
                       child: Padding(
@@ -196,7 +199,11 @@ class TeamManagementScreen extends ConsumerWidget {
                                     style: textTheme.titleMedium,
                                   ),
                                   Text(
-                                    '${inv.role.value} · expires ${DateFormat.MMMd().format(inv.expiresAt.toDate())}',
+                                    l.team_invitation_meta(
+                                      localizedRole(l, inv.role),
+                                      DateFormat.MMMd(localeCode)
+                                          .format(inv.expiresAt.toDate()),
+                                    ),
                                     style: textTheme.bodyMedium?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
                                     ),

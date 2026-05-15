@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum EquipmentType {
   ventilation('ventilation', 'Ventilation'),
   feeder('feeder', 'Feeder'),
@@ -110,4 +112,40 @@ class Equipment {
         'createdAt': createdAt,
         'updatedAt': updatedAt,
       };
+}
+
+String localizedEquipmentType(AppLocalizations l, EquipmentType t) {
+  switch (t) {
+    case EquipmentType.ventilation:
+      return l.equipment_type_ventilation;
+    case EquipmentType.feeder:
+      return l.equipment_type_feeder;
+    case EquipmentType.waterPump:
+      return l.equipment_type_water_pump;
+    case EquipmentType.generator:
+      return l.equipment_type_generator;
+    case EquipmentType.scale:
+      return l.equipment_type_scale;
+    case EquipmentType.vehicle:
+      return l.equipment_type_vehicle;
+    case EquipmentType.structure:
+      return l.equipment_type_structure;
+    case EquipmentType.tool:
+      return l.equipment_type_tool;
+    case EquipmentType.other:
+      return l.equipment_type_other;
+  }
+}
+
+String localizedEquipmentStatus(AppLocalizations l, EquipmentStatus s) {
+  switch (s) {
+    case EquipmentStatus.inUse:
+      return l.equipment_status_in_use;
+    case EquipmentStatus.available:
+      return l.equipment_status_available;
+    case EquipmentStatus.needsRepair:
+      return l.equipment_status_needs_repair;
+    case EquipmentStatus.retired:
+      return l.equipment_status_retired;
+  }
 }

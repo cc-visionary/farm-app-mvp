@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 enum PigSex {
   male('male', 'Male'),
   female('female', 'Female');
@@ -143,4 +145,65 @@ class Pig {
 
   bool get isBreeder =>
       stage == PigStage.sow || stage == PigStage.gilt || stage == PigStage.boar;
+}
+
+// ---------------------------------------------------------------------------
+// Localization helpers
+// ---------------------------------------------------------------------------
+//
+// These are top-level functions (not methods on the enums) so the domain
+// stays compatible with non-UI callers — repositories and tests do not need
+// to pass an [AppLocalizations]. UI screens use these to get the localized
+// display label for a given enum value.
+
+String localizedPigStage(AppLocalizations l, PigStage s) {
+  switch (s) {
+    case PigStage.suckling:
+      return l.pig_stage_suckling;
+    case PigStage.weaner:
+      return l.pig_stage_weaner;
+    case PigStage.grower:
+      return l.pig_stage_grower;
+    case PigStage.finisher:
+      return l.pig_stage_finisher;
+    case PigStage.gilt:
+      return l.pig_stage_gilt;
+    case PigStage.sow:
+      return l.pig_stage_sow;
+    case PigStage.boar:
+      return l.pig_stage_boar;
+  }
+}
+
+String localizedPigSex(AppLocalizations l, PigSex s) =>
+    s == PigSex.female ? l.pig_sex_female : l.pig_sex_male;
+
+String localizedPigStatus(AppLocalizations l, PigStatus s) {
+  switch (s) {
+    case PigStatus.active:
+      return l.pig_status_active;
+    case PigStatus.sold:
+      return l.pig_status_sold;
+    case PigStatus.culled:
+      return l.pig_status_culled;
+    case PigStatus.deceased:
+      return l.pig_status_deceased;
+  }
+}
+
+/// Localized human-readable age string ("1 yr" / "1 buwan" / "1 linggo" / "3 d")
+/// derived from [pig.birthDate] and a clock [now].
+///
+/// Bucketing thresholds match `Pig.ageString` for behavioural parity:
+///   >= 365 days  → years
+///   >= 30 days   → months
+///   >= 7 days    → weeks
+///   else         → days
+String localizedAge(AppLocalizations l, Pig pig, DateTime now) {
+  final diff = now.difference(pig.birthDate.toDate());
+  final days = diff.inDays;
+  if (days >= 365) return l.pig_age_years(days ~/ 365);
+  if (days >= 30) return l.pig_age_months(days ~/ 30);
+  if (days >= 7) return l.pig_age_weeks(days ~/ 7);
+  return l.pig_age_days(days);
 }

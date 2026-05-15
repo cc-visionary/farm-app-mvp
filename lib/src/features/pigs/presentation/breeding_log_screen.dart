@@ -2,9 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/pig_providers.dart';
@@ -34,12 +35,13 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
     if (_boarId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a boar.')),
+        SnackBar(content: Text(l.breeding_log_boar_required)),
       );
       return;
     }
@@ -67,7 +69,7 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save: $e')),
+          SnackBar(content: Text(l.breeding_log_save_failed(e.toString()))),
         );
       }
     } finally {
@@ -78,6 +80,7 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final farmId = ref.watch(selectedFarmIdProvider);
@@ -117,18 +120,20 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: Text('Log breeding · ${widget.sow.tagId}')),
+      appBar: AppBar(
+        title: Text(l.breeding_log_title(widget.sow.tagId)),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Heat observed'),
+            SectionHeader(title: l.breeding_log_section_heat),
             dateTile(
               icon: Iconsax.calendar_1,
               text: _heatDate == null
-                  ? 'Optional'
-                  : DateFormat.yMMMd().format(_heatDate!),
+                  ? l.breeding_log_heat_date_unset
+                  : formatMediumDate(context, _heatDate!),
               isHint: _heatDate == null,
               onTap: () async {
                 final p = await AdaptiveDatePicker.show(
@@ -140,10 +145,10 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                 if (p != null) setState(() => _heatDate = p);
               },
             ),
-            const SectionHeader(title: 'Insemination date'),
+            SectionHeader(title: l.breeding_log_section_insemination),
             dateTile(
               icon: Iconsax.calendar_1,
-              text: DateFormat.yMMMd().format(_inseminationDate),
+              text: formatMediumDate(context, _inseminationDate),
               onTap: () async {
                 final p = await AdaptiveDatePicker.show(
                   context: context,
@@ -154,7 +159,7 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                 if (p != null) setState(() => _inseminationDate = p);
               },
             ),
-            const SectionHeader(title: 'Boar'),
+            SectionHeader(title: l.breeding_log_section_boar),
             pigsAsync.when(
               data: (pigs) {
                 final boars = pigs
@@ -167,7 +172,8 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                     .toList();
                 return DropdownButtonFormField<String>(
                   initialValue: _boarId,
-                  decoration: const InputDecoration(hintText: 'Select boar'),
+                  decoration:
+                      InputDecoration(hintText: l.breeding_log_boar_hint),
                   items: boars
                       .map(
                         (b) => DropdownMenuItem(
@@ -187,12 +193,14 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                 ),
               ),
             ),
-            const SectionHeader(title: 'Method'),
+            SectionHeader(title: l.breeding_log_section_method),
             SegmentedButton<BreedingMethod>(
               segments: BreedingMethod.values
                   .map(
-                    (m) =>
-                        ButtonSegment(value: m, label: Text(m.label)),
+                    (m) => ButtonSegment(
+                      value: m,
+                      label: Text(_localizedBreedingMethod(l, m)),
+                    ),
                   )
                   .toList(),
               selected: {_method},
@@ -214,7 +222,7 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Expected farrowing',
+                          l.breeding_log_expected_label,
                           style: textTheme.labelMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w700,
@@ -223,7 +231,7 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          DateFormat.yMMMd().format(expected),
+                          formatMediumDate(context, expected),
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -234,10 +242,11 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                 ],
               ),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.breeding_log_section_notes),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration:
+                  InputDecoration(hintText: l.breeding_log_notes_hint),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -252,11 +261,20 @@ class _BreedingLogScreenState extends ConsumerState<BreedingLogScreen> {
                         color: colorScheme.onPrimary,
                       ),
                     )
-                  : const Text('Save breeding'),
+                  : Text(l.breeding_log_submit),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+String _localizedBreedingMethod(AppLocalizations l, BreedingMethod m) {
+  switch (m) {
+    case BreedingMethod.natural:
+      return l.breeding_method_natural;
+    case BreedingMethod.ai:
+      return l.breeding_method_ai;
   }
 }

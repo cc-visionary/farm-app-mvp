@@ -4,10 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../areas/application/area_providers.dart';
 import '../../areas/domain/area.dart';
 import '../../areas/domain/pen.dart';
@@ -87,6 +88,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -94,19 +96,19 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
     final tagText = _tag.text.trim();
     final breedText = _breed.text.trim();
     if (tagText.isEmpty) {
-      _snack('Tag ID is required.');
+      _snack(l.pig_form_validation_tag_required);
       return;
     }
     if (breedText.isEmpty) {
-      _snack('Breed is required.');
+      _snack(l.pig_form_validation_breed_required);
       return;
     }
     if (_birthDate == null) {
-      _snack('Birth date is required.');
+      _snack(l.pig_form_validation_birth_required);
       return;
     }
     if (_areaId == null || _areaId!.isEmpty) {
-      _snack('Area is required.');
+      _snack(l.pig_form_validation_area_required);
       return;
     }
 
@@ -115,7 +117,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
     if (weightText.isNotEmpty) {
       weightValue = double.tryParse(weightText);
       if (weightValue == null || weightValue < 0) {
-        _snack('Weight must be a non-negative number.');
+        _snack(l.pig_form_validation_weight_nonneg);
         return;
       }
     }
@@ -175,7 +177,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) _snack('Save failed: $e');
+      if (mounted) _snack(l.pig_form_save_failed(e.toString()));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -183,6 +185,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final theme = Theme.of(context);
     final isEditing = widget.existing != null;
@@ -202,32 +205,38 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit pig' : 'Add pig'),
+        title: Text(isEditing ? l.pig_edit_title : l.pig_add_title),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'Photo',
-              padding: EdgeInsets.only(top: 8, bottom: 8),
+            SectionHeader(
+              title: l.pig_form_section_photo,
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
             ),
             _PhotoPicker(
               photoFile: _photoFile,
               existingUrl: widget.existing?.photoUrl,
               onTap: _pickPhoto,
             ),
-            const SectionHeader(title: 'Basic info'),
+            SectionHeader(title: l.pig_form_section_basic_info),
             TextField(
               controller: _tag,
-              decoration: const InputDecoration(labelText: 'Tag ID'),
+              decoration: InputDecoration(labelText: l.pig_form_label_tag_id),
             ),
             const SizedBox(height: 12),
             SegmentedButton<PigSex>(
-              segments: const [
-                ButtonSegment(value: PigSex.female, label: Text('Female')),
-                ButtonSegment(value: PigSex.male, label: Text('Male')),
+              segments: [
+                ButtonSegment(
+                  value: PigSex.female,
+                  label: Text(l.pig_sex_female),
+                ),
+                ButtonSegment(
+                  value: PigSex.male,
+                  label: Text(l.pig_sex_male),
+                ),
               ],
               selected: {_sex},
               onSelectionChanged: (s) => setState(() => _sex = s.first),
@@ -235,7 +244,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: breedDropdownValue,
-              decoration: const InputDecoration(labelText: 'Breed'),
+              decoration: InputDecoration(labelText: l.pig_form_label_breed),
               items: _breedSeed
                   .map(
                     (b) => DropdownMenuItem(value: b, child: Text(b)),
@@ -249,26 +258,30 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _breed,
-              decoration: const InputDecoration(
-                labelText: 'Breed (custom)',
-                hintText: 'Type a custom breed or pick a common one above',
+              decoration: InputDecoration(
+                labelText: l.pig_form_label_breed_custom,
+                hintText: l.pig_form_label_breed_custom_hint,
               ),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<PigStage>(
               initialValue: _stage,
-              decoration: const InputDecoration(labelText: 'Stage'),
+              decoration: InputDecoration(labelText: l.pig_form_label_stage),
               items: PigStage.values
                   .map(
-                    (s) => DropdownMenuItem(value: s, child: Text(s.label)),
+                    (s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(localizedPigStage(l, s)),
+                    ),
                   )
                   .toList(),
               onChanged: (v) => setState(() => _stage = v ?? PigStage.grower),
             ),
             const SizedBox(height: 12),
             _DateField(
-              label: 'Birth date',
+              label: l.pig_form_label_birth_date,
+              unsetText: l.pig_form_label_birth_date_unset,
               value: _birthDate,
               onTap: () async {
                 final picked = await AdaptiveDatePicker.show(
@@ -280,7 +293,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                 if (picked != null) setState(() => _birthDate = picked);
               },
             ),
-            const SectionHeader(title: 'Location'),
+            SectionHeader(title: l.pig_form_section_location),
             areasAsync.when(
               data: (areas) {
                 final knownIds = areas.map((a) => a.id).toSet();
@@ -289,7 +302,8 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                     : null;
                 return DropdownButtonFormField<String>(
                   initialValue: value,
-                  decoration: const InputDecoration(labelText: 'Area'),
+                  decoration:
+                      InputDecoration(labelText: l.pig_form_label_area),
                   items: areas
                       .map<DropdownMenuItem<String>>(
                         (a) => DropdownMenuItem(
@@ -306,7 +320,7 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
               },
               loading: () => const LinearProgressIndicator(),
               error: (e, _) => Text(
-                'Areas error: $e',
+                l.pig_form_areas_error(e.toString()),
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
@@ -319,13 +333,13 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                     : null;
                 return DropdownButtonFormField<String?>(
                   initialValue: value,
-                  decoration: const InputDecoration(
-                    labelText: 'Pen (optional)',
+                  decoration: InputDecoration(
+                    labelText: l.pig_form_label_pen,
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(
+                    DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('— none —'),
+                      child: Text(l.pig_form_pen_none),
                     ),
                     ...pens.map<DropdownMenuItem<String?>>(
                       (p) => DropdownMenuItem<String?>(
@@ -339,20 +353,20 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
               },
               loading: () => const SizedBox.shrink(),
               error: (e, _) => Text(
-                'Pens error: $e',
+                l.pig_form_pens_error(e.toString()),
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
-            const SectionHeader(title: 'Weight'),
+            SectionHeader(title: l.pig_form_section_weight),
             TextField(
               controller: _weight,
-              decoration: const InputDecoration(
-                labelText: 'Current weight',
-                hintText: 'kg (optional)',
+              decoration: InputDecoration(
+                labelText: l.pig_form_label_current_weight,
+                hintText: l.pig_form_label_weight_hint,
               ),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'Lineage'),
+            SectionHeader(title: l.pig_form_section_lineage),
             pigsAsync.when(
               data: (pigs) {
                 final pigId = widget.existing?.id;
@@ -374,13 +388,13 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                   children: [
                     DropdownButtonFormField<String?>(
                       initialValue: sireValue,
-                      decoration: const InputDecoration(
-                        labelText: 'Sire (optional)',
+                      decoration: InputDecoration(
+                        labelText: l.pig_form_label_sire,
                       ),
                       items: [
-                        const DropdownMenuItem<String?>(
+                        DropdownMenuItem<String?>(
                           value: null,
-                          child: Text('— unknown —'),
+                          child: Text(l.pig_form_parent_unknown),
                         ),
                         ...sires.map<DropdownMenuItem<String?>>(
                           (p) => DropdownMenuItem<String?>(
@@ -394,13 +408,13 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String?>(
                       initialValue: damValue,
-                      decoration: const InputDecoration(
-                        labelText: 'Dam (optional)',
+                      decoration: InputDecoration(
+                        labelText: l.pig_form_label_dam,
                       ),
                       items: [
-                        const DropdownMenuItem<String?>(
+                        DropdownMenuItem<String?>(
                           value: null,
-                          child: Text('— unknown —'),
+                          child: Text(l.pig_form_parent_unknown),
                         ),
                         ...dams.map<DropdownMenuItem<String?>>(
                           (p) => DropdownMenuItem<String?>(
@@ -416,15 +430,15 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
               },
               loading: () => const SizedBox.shrink(),
               error: (e, _) => Text(
-                'Pigs error: $e',
+                l.pig_form_pigs_error(e.toString()),
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.pig_form_section_notes),
             TextField(
               controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
+              decoration: InputDecoration(
+                labelText: l.pig_form_label_notes_optional,
               ),
               maxLines: 3,
             ),
@@ -443,7 +457,11 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
                               AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
-                    : Text(isEditing ? 'Save changes' : 'Add pig'),
+                    : Text(
+                        isEditing
+                            ? l.pig_form_save_edit
+                            : l.pig_form_save_add,
+                      ),
               ),
             ),
           ],
@@ -467,6 +485,7 @@ class _PhotoPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final hasPhoto = photoFile != null || (existingUrl != null);
     return GestureDetector(
       onTap: onTap,
@@ -502,7 +521,7 @@ class _PhotoPicker extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Add photo',
+                          l.pig_form_photo_add,
                           style: theme.textTheme.bodyMedium,
                         ),
                       ],
@@ -533,7 +552,7 @@ class _PhotoPicker extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Change photo',
+                      l.pig_form_photo_change,
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
@@ -552,11 +571,13 @@ class _PhotoPicker extends StatelessWidget {
 class _DateField extends StatelessWidget {
   const _DateField({
     required this.label,
+    required this.unsetText,
     required this.value,
     required this.onTap,
   });
 
   final String label;
+  final String unsetText;
   final DateTime? value;
   final VoidCallback onTap;
 
@@ -576,9 +597,7 @@ class _DateField extends StatelessWidget {
           ),
         ),
         child: Text(
-          value == null
-              ? 'Select'
-              : DateFormat.yMMMd().format(value!),
+          value == null ? unsetText : formatMediumDate(context, value!),
           style: theme.textTheme.bodyLarge?.copyWith(
             color: value == null
                 ? theme.colorScheme.onSurfaceVariant

@@ -3,9 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../media/media_providers.dart';
@@ -62,6 +63,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -71,7 +73,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
     if (wDaysText.isNotEmpty) {
       wDays = int.tryParse(wDaysText);
       if (wDays == null || wDays <= 0) {
-        _snack('Withdrawal period must be a positive number of days.');
+        _snack(l.health_log_withdrawal_positive);
         return;
       }
     }
@@ -81,7 +83,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
     if (costText.isNotEmpty) {
       cost = double.tryParse(costText);
       if (cost == null || cost < 0) {
-        _snack('Cost must be a non-negative number.');
+        _snack(l.health_log_cost_nonneg);
         return;
       }
     }
@@ -136,7 +138,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
           );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) _snack('Could not save: $e');
+      if (mounted) _snack(l.health_log_save_failed(e.toString()));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -145,6 +147,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final showDiagnosis = _type == HealthEventType.treatment ||
@@ -153,23 +156,28 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
     final showWithdrawalPreview = wDays != null && wDays > 0;
 
     return Scaffold(
-      appBar: AppBar(title: Text('Log health · ${widget.pig.tagId}')),
+      appBar: AppBar(
+        title: Text(l.health_log_title(widget.pig.tagId)),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Type'),
+            SectionHeader(title: l.health_log_section_type),
             SegmentedButton<HealthEventType>(
               segments: HealthEventType.values
                   .map(
-                    (t) => ButtonSegment(value: t, label: Text(t.label)),
+                    (t) => ButtonSegment(
+                      value: t,
+                      label: Text(_localizedHealthType(l, t)),
+                    ),
                   )
                   .toList(),
               selected: {_type},
               onSelectionChanged: (s) => setState(() => _type = s.first),
             ),
-            const SectionHeader(title: 'Date'),
+            SectionHeader(title: l.health_log_section_date),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -181,7 +189,7 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                   color: colorScheme.onSurfaceVariant,
                 ),
                 title: Text(
-                  DateFormat.yMMMd().format(_date),
+                  formatMediumDate(context, _date),
                   style: textTheme.titleMedium,
                 ),
                 trailing: Icon(
@@ -199,44 +207,49 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                 },
               ),
             ),
-            const SectionHeader(title: 'Product'),
+            SectionHeader(title: l.health_log_section_product),
             TextField(
               controller: _productController,
-              decoration: const InputDecoration(
-                hintText: 'e.g. PRRS vaccine',
-              ),
+              decoration:
+                  InputDecoration(hintText: l.health_log_product_hint),
             ),
-            const SectionHeader(title: 'Dosage'),
+            SectionHeader(title: l.health_log_section_dosage),
             TextField(
               controller: _dosageController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration:
+                  InputDecoration(hintText: l.health_log_dosage_hint),
             ),
-            const SectionHeader(title: 'Route'),
+            SectionHeader(title: l.health_log_section_route),
             DropdownButtonFormField<HealthRoute?>(
               initialValue: _route,
               decoration: const InputDecoration(),
               items: [
-                const DropdownMenuItem(value: null, child: Text('—')),
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(l.health_log_route_none),
+                ),
                 ...HealthRoute.values.map(
-                  (r) => DropdownMenuItem(value: r, child: Text(r.label)),
+                  (r) => DropdownMenuItem(
+                    value: r,
+                    child: Text(_localizedHealthRoute(l, r)),
+                  ),
                 ),
               ],
               onChanged: (v) => setState(() => _route = v),
             ),
             if (showDiagnosis) ...[
-              const SectionHeader(title: 'Diagnosis'),
+              SectionHeader(title: l.health_log_section_diagnosis),
               TextField(
                 controller: _diagnosisController,
                 decoration: const InputDecoration(),
               ),
             ],
-            const SectionHeader(title: 'Withdrawal period'),
+            SectionHeader(title: l.health_log_section_withdrawal),
             TextField(
               controller: _withdrawalDaysController,
-              decoration: const InputDecoration(
-                hintText: 'Days (optional)',
-                helperText:
-                    'Auto-generates a reminder task when withdrawal ends.',
+              decoration: InputDecoration(
+                hintText: l.health_log_withdrawal_days_hint,
+                helperText: l.health_log_withdrawal_helper,
               ),
               keyboardType: TextInputType.number,
               onChanged: (_) => setState(() {}),
@@ -253,7 +266,12 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Withdrawal ends ${DateFormat.yMMMd().format(_date.add(Duration(days: wDays)))}',
+                  l.health_log_withdrawal_preview(
+                    formatMediumDate(
+                      context,
+                      _date.add(Duration(days: wDays)),
+                    ),
+                  ),
                   style: textTheme.labelMedium?.copyWith(
                     color: colorScheme.onErrorContainer,
                     fontWeight: FontWeight.w700,
@@ -261,13 +279,13 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                 ),
               ),
             ],
-            const SectionHeader(title: 'Cost (PHP)'),
+            SectionHeader(title: l.health_log_section_cost),
             TextField(
               controller: _costController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration: InputDecoration(hintText: l.health_log_cost_hint),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'Photos'),
+            SectionHeader(title: l.health_log_section_photos),
             SizedBox(
               height: 96,
               child: ListView(
@@ -330,10 +348,11 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                 ],
               ),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.health_log_section_notes),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration:
+                  InputDecoration(hintText: l.health_log_notes_hint),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -348,11 +367,37 @@ class _HealthLogScreenState extends ConsumerState<HealthLogScreen> {
                         color: colorScheme.onPrimary,
                       ),
                     )
-                  : const Text('Save health record'),
+                  : Text(l.health_log_submit),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+String _localizedHealthType(AppLocalizations l, HealthEventType t) {
+  switch (t) {
+    case HealthEventType.vaccination:
+      return l.health_event_type_vaccination;
+    case HealthEventType.treatment:
+      return l.health_event_type_treatment;
+    case HealthEventType.checkup:
+      return l.health_event_type_checkup;
+    case HealthEventType.deworming:
+      return l.health_event_type_deworming;
+  }
+}
+
+String _localizedHealthRoute(AppLocalizations l, HealthRoute r) {
+  switch (r) {
+    case HealthRoute.oral:
+      return l.health_route_oral;
+    case HealthRoute.im:
+      return l.health_route_im;
+    case HealthRoute.sc:
+      return l.health_route_sc;
+    case HealthRoute.topical:
+      return l.health_route_topical;
   }
 }

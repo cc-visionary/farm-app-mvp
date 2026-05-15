@@ -3,10 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../media/media_providers.dart';
@@ -14,6 +15,9 @@ import '../../media/photo_picker.dart';
 import '../application/pig_providers.dart';
 import '../domain/pig.dart';
 
+// Canonical (English) cause values persisted to Firestore. The UI shows the
+// localized labels via [_localizedCause] but [_cause] stores the canonical
+// value so we don't change the data model.
 const _causes = <String>[
   'Respiratory',
   'Digestive',
@@ -22,6 +26,25 @@ const _causes = <String>[
   'ASF-suspected',
   'Other',
 ];
+
+String _localizedCause(AppLocalizations l, String cause) {
+  switch (cause) {
+    case 'Respiratory':
+      return l.mortality_log_cause_respiratory;
+    case 'Digestive':
+      return l.mortality_log_cause_digestive;
+    case 'Accident':
+      return l.mortality_log_cause_accident;
+    case 'Unknown':
+      return l.mortality_log_cause_unknown;
+    case 'ASF-suspected':
+      return l.mortality_log_cause_asf;
+    case 'Other':
+      return l.mortality_log_cause_other;
+    default:
+      return cause;
+  }
+}
 
 class MortalityLogScreen extends ConsumerStatefulWidget {
   const MortalityLogScreen({super.key, required this.pig});
@@ -60,20 +83,20 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) {
-      _snack('Cannot save: missing farm or user.');
+      _snack(l.mortality_log_missing_context);
       return;
     }
 
     // Destructive confirmation BEFORE any uploads/writes.
     final confirm = await ConfirmDialog.show(
       context: context,
-      title: 'Mark deceased?',
-      message:
-          'Mark ${widget.pig.tagId} as deceased? This cannot be undone.',
-      confirmLabel: 'Mark deceased',
+      title: l.mortality_log_confirm_title,
+      message: l.mortality_log_confirm_body(widget.pig.tagId),
+      confirmLabel: l.mortality_log_submit,
       destructive: true,
     );
     if (!confirm) return;
@@ -111,7 +134,7 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
           );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) _snack('Could not save: $e');
+      if (mounted) _snack(l.mortality_log_save_failed(e.toString()));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -120,16 +143,19 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     return Scaffold(
-      appBar: AppBar(title: Text('Mortality · ${widget.pig.tagId}')),
+      appBar: AppBar(
+        title: Text(l.mortality_log_title(widget.pig.tagId)),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Date'),
+            SectionHeader(title: l.mortality_log_section_date),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -141,7 +167,7 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                   color: colorScheme.onSurfaceVariant,
                 ),
                 title: Text(
-                  DateFormat.yMMMd().format(_date),
+                  formatMediumDate(context, _date),
                   style: textTheme.titleMedium,
                 ),
                 trailing: Icon(
@@ -159,14 +185,14 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                 },
               ),
             ),
-            const SectionHeader(title: 'Cause'),
+            SectionHeader(title: l.mortality_log_section_cause),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: _causes
                   .map(
                     (c) => ChoiceChip(
-                      label: Text(c),
+                      label: Text(_localizedCause(l, c)),
                       selected: _cause == c,
                       onSelected: (sel) =>
                           setState(() => _cause = sel ? c : null),
@@ -174,7 +200,7 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                   )
                   .toList(),
             ),
-            const SectionHeader(title: 'Photos'),
+            SectionHeader(title: l.mortality_log_section_photos),
             SizedBox(
               height: 96,
               child: ListView(
@@ -237,10 +263,11 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                 ],
               ),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.mortality_log_section_notes),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration:
+                  InputDecoration(hintText: l.mortality_log_notes_hint),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -259,7 +286,9 @@ class _MortalityLogScreenState extends ConsumerState<MortalityLogScreen> {
                       ),
                     )
                   : const Icon(Icons.heart_broken),
-              label: Text(_busy ? 'Saving…' : 'Mark deceased'),
+              label: Text(
+                _busy ? l.mortality_log_saving : l.mortality_log_submit,
+              ),
               onPressed: _busy ? null : _save,
             ),
           ],

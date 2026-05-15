@@ -2,9 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/pig_providers.dart';
@@ -45,6 +46,7 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -52,7 +54,7 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
     final live = int.tryParse(_liveController.text.trim());
     if (live == null || live < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Live born is required (0 or more).')),
+        SnackBar(content: Text(l.farrowing_log_live_required)),
       );
       return;
     }
@@ -60,9 +62,7 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
     final mumm = int.tryParse(_mummController.text.trim()) ?? 0;
     if (still < 0 || mumm < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Stillborn and mummified must be 0 or more.'),
-        ),
+        SnackBar(content: Text(l.farrowing_log_counts_nonneg)),
       );
       return;
     }
@@ -94,7 +94,9 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save farrowing: $e')),
+          SnackBar(
+            content: Text(l.farrowing_log_save_failed(e.toString())),
+          ),
         );
       }
     } finally {
@@ -105,16 +107,19 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     return Scaffold(
-      appBar: AppBar(title: Text('Farrowing · ${widget.sow.tagId}')),
+      appBar: AppBar(
+        title: Text(l.farrowing_log_title(widget.sow.tagId)),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(title: 'Farrowing date'),
+            SectionHeader(title: l.farrowing_log_section_date),
             Card(
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -126,7 +131,7 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
                   color: colorScheme.onSurfaceVariant,
                 ),
                 title: Text(
-                  DateFormat.yMMMd().format(_date),
+                  formatMediumDate(context, _date),
                   style: textTheme.titleMedium,
                 ),
                 trailing: Icon(
@@ -144,28 +149,32 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
                 },
               ),
             ),
-            const SectionHeader(title: 'Counts'),
+            SectionHeader(title: l.farrowing_log_section_counts),
             TextField(
               controller: _liveController,
-              decoration: const InputDecoration(labelText: 'Live born'),
+              decoration:
+                  InputDecoration(labelText: l.farrowing_log_live_label),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _stillController,
-              decoration: const InputDecoration(labelText: 'Stillborn'),
+              decoration:
+                  InputDecoration(labelText: l.farrowing_log_still_label),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _mummController,
-              decoration: const InputDecoration(labelText: 'Mummified'),
+              decoration:
+                  InputDecoration(labelText: l.farrowing_log_mumm_label),
               keyboardType: TextInputType.number,
             ),
-            const SectionHeader(title: 'Average birth weight'),
+            SectionHeader(title: l.farrowing_log_section_avg_weight),
             TextField(
               controller: _weightController,
-              decoration: const InputDecoration(hintText: 'kg (optional)'),
+              decoration:
+                  InputDecoration(hintText: l.farrowing_log_avg_weight_hint),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -178,11 +187,11 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
                   vertical: 4,
                 ),
                 title: Text(
-                  'Create litter batch',
+                  l.farrowing_log_create_batch_title,
                   style: textTheme.titleMedium,
                 ),
                 subtitle: Text(
-                  'Tracks the piglets as a group',
+                  l.farrowing_log_create_batch_subtitle,
                   style: textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -191,10 +200,11 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
                 onChanged: (v) => setState(() => _createBatch = v),
               ),
             ),
-            const SectionHeader(title: 'Notes'),
+            SectionHeader(title: l.farrowing_log_section_notes),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(hintText: 'Optional'),
+              decoration:
+                  InputDecoration(hintText: l.farrowing_log_notes_hint),
               maxLines: 3,
             ),
             const SizedBox(height: 24),
@@ -209,7 +219,7 @@ class _FarrowingLogScreenState extends ConsumerState<FarrowingLogScreen> {
                         color: colorScheme.onPrimary,
                       ),
                     )
-                  : const Text('Save farrowing'),
+                  : Text(l.farrowing_log_submit),
             ),
           ],
         ),

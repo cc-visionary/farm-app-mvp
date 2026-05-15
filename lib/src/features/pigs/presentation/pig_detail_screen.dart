@@ -3,11 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/stat_tile.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../sales/application/sale_providers.dart';
@@ -27,6 +28,7 @@ class PigDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final pigAsync =
@@ -39,38 +41,38 @@ class PigDetailScreen extends ConsumerWidget {
         appBar: AppBar(
           title: pigAsync.maybeWhen(
             data: (p) => p == null
-                ? const Text('Pig')
+                ? Text(l.pig_detail_title_fallback)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(p.tagId, style: theme.textTheme.titleMedium),
                       Text(
-                        p.stage.label,
+                        localizedPigStage(l, p.stage),
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
-            orElse: () => const Text('Pig'),
+            orElse: () => Text(l.pig_detail_title_fallback),
           ),
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'Profile'),
-              Tab(text: 'Breeding'),
-              Tab(text: 'Health'),
-              Tab(text: 'Lineage'),
+              Tab(text: l.pig_detail_tab_profile),
+              Tab(text: l.pig_detail_tab_breeding),
+              Tab(text: l.pig_detail_tab_health),
+              Tab(text: l.pig_detail_tab_lineage),
             ],
           ),
         ),
         body: pigAsync.when(
           data: (pig) {
             if (pig == null) {
-              return const EmptyState(
+              return EmptyState(
                 icon: Iconsax.info_circle,
-                title: 'Pig not found',
-                subtitle: 'It may have been removed.',
+                title: l.pig_detail_not_found_title,
+                subtitle: l.pig_detail_not_found_subtitle,
               );
             }
             return TabBarView(
@@ -103,42 +105,58 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final now = DateTime.now();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
         if (pig.status == PigStatus.sold) _SoldBanner(pig: pig),
         _PhotoHeader(photoUrl: pig.photoUrl),
-        const SectionHeader(title: 'Identity'),
-        StatTile(label: 'Tag ID', value: pig.tagId),
-        StatTile(label: 'Sex', value: pig.sex.label),
-        StatTile(label: 'Breed', value: pig.breed.isEmpty ? '—' : pig.breed),
-        StatTile(label: 'Stage', value: pig.stage.label),
-        StatTile(label: 'Status', value: pig.status.label),
-        const SectionHeader(title: 'Lifecycle'),
+        SectionHeader(title: l.pig_detail_section_identity),
+        StatTile(label: l.pig_detail_profile_tag_id, value: pig.tagId),
         StatTile(
-          label: 'Born',
-          value: DateFormat.yMMMd().format(pig.birthDate.toDate()),
+          label: l.pig_detail_profile_sex,
+          value: localizedPigSex(l, pig.sex),
         ),
-        StatTile(label: 'Age', value: pig.ageString(now)),
+        StatTile(
+          label: l.pig_detail_profile_breed,
+          value: pig.breed.isEmpty ? '—' : pig.breed,
+        ),
+        StatTile(
+          label: l.pig_detail_profile_stage,
+          value: localizedPigStage(l, pig.stage),
+        ),
+        StatTile(
+          label: l.pig_detail_profile_status,
+          value: localizedPigStatus(l, pig.status),
+        ),
+        SectionHeader(title: l.pig_detail_section_lifecycle),
+        StatTile(
+          label: l.pig_detail_profile_born,
+          value: formatMediumDate(context, pig.birthDate.toDate()),
+        ),
+        StatTile(
+          label: l.pig_detail_profile_age,
+          value: localizedAge(l, pig, now),
+        ),
         if (pig.currentWeight != null)
           StatTile(
-            label: 'Current weight',
+            label: l.pig_detail_profile_current_weight,
             value: '${pig.currentWeight!.toStringAsFixed(1)} kg',
           ),
-        const SectionHeader(title: 'Location'),
+        SectionHeader(title: l.pig_detail_section_location),
         StatTile(
-          label: 'Area',
+          label: l.pig_detail_profile_area,
           value: pig.currentAreaId.isEmpty ? '—' : pig.currentAreaId,
         ),
         StatTile(
-          label: 'Pen',
+          label: l.pig_detail_profile_pen,
           value: (pig.currentPenId == null || pig.currentPenId!.isEmpty)
               ? '—'
               : pig.currentPenId!,
         ),
         if (pig.notes != null && pig.notes!.trim().isNotEmpty) ...[
-          const SectionHeader(title: 'Notes'),
+          SectionHeader(title: l.pig_detail_section_notes),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(pig.notes!, style: theme.textTheme.bodyLarge),
@@ -151,7 +169,7 @@ class _ProfileTab extends StatelessWidget {
             child: OutlinedButton.icon(
               icon: Icon(Icons.heart_broken, color: theme.colorScheme.error),
               label: Text(
-                'Mark deceased',
+                l.pig_detail_profile_mark_deceased,
                 style: TextStyle(color: theme.colorScheme.error),
               ),
               style: OutlinedButton.styleFrom(
@@ -161,10 +179,9 @@ class _ProfileTab extends StatelessWidget {
               onPressed: () async {
                 final ok = await ConfirmDialog.show(
                   context: context,
-                  title: 'Mark deceased?',
-                  message:
-                      'This cannot be undone. The pig will be moved out of active herd.',
-                  confirmLabel: 'Mark deceased',
+                  title: l.pig_detail_profile_mark_deceased_confirm_title,
+                  message: l.pig_detail_profile_mark_deceased_confirm_body,
+                  confirmLabel: l.pig_detail_profile_mark_deceased,
                   destructive: true,
                 );
                 if (!ok || !context.mounted) return;
@@ -237,17 +254,18 @@ class _LineageTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        const SectionHeader(title: 'Parents'),
+        SectionHeader(title: l.pig_detail_section_parents),
         _ParentCard(
-          role: 'Sire',
+          role: l.pig_detail_lineage_sire,
           symbol: '♂',
           parentId: pig.sireId,
         ),
         _ParentCard(
-          role: 'Dam',
+          role: l.pig_detail_lineage_dam,
           symbol: '♀',
           parentId: pig.damId,
         ),
@@ -269,6 +287,7 @@ class _ParentCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     final isFemale = symbol == '♀';
     final avatarBg = isFemale
@@ -295,7 +314,7 @@ class _ParentCard extends ConsumerWidget {
           ),
           title: Text(role, style: theme.textTheme.titleMedium),
           subtitle: Text(
-            'Unknown',
+            l.pig_detail_lineage_unknown,
             style: theme.textTheme.bodyMedium,
           ),
         ),
@@ -325,7 +344,7 @@ class _ParentCard extends ConsumerWidget {
               ),
               title: Text(role, style: theme.textTheme.titleMedium),
               subtitle: Text(
-                'Not in this farm',
+                l.pig_detail_lineage_not_in_farm,
                 style: theme.textTheme.bodyMedium,
               ),
             );
@@ -398,6 +417,7 @@ class _HealthTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final recordsAsync = ref.watch(
       healthForPigProvider((farmId: pig.farmId, pigId: pig.id)),
     );
@@ -405,7 +425,7 @@ class _HealthTab extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.health),
-        label: const Text('Log health'),
+        label: Text(l.pig_detail_health_fab_log),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => HealthLogScreen(pig: pig)),
@@ -414,10 +434,10 @@ class _HealthTab extends ConsumerWidget {
       body: recordsAsync.when(
         data: (records) {
           if (records.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.health,
-              title: 'No health records yet',
-              subtitle: 'Tap "Log health" to record a treatment or check.',
+              title: l.pig_detail_health_no_records_title,
+              subtitle: l.pig_detail_health_no_records_subtitle,
             );
           }
           return ListView(
@@ -471,6 +491,7 @@ class _HealthCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final color = _typeColor(theme.colorScheme);
     return Card(
       child: Padding(
@@ -492,7 +513,7 @@ class _HealthCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    record.type.label,
+                    _localizedHealthType(l, record.type),
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: color,
                       fontWeight: FontWeight.w700,
@@ -501,7 +522,7 @@ class _HealthCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  DateFormat.yMMMd().format(record.date.toDate()),
+                  formatMediumDate(context, record.date.toDate()),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -510,13 +531,27 @@ class _HealthCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (record.productName != null)
-              _kv(theme, 'Product', record.productName!),
-            if (record.dosage != null) _kv(theme, 'Dosage', record.dosage!),
-            if (record.route != null) _kv(theme, 'Route', record.route!.label),
+              _kv(theme, l.pig_detail_health_row_product, record.productName!),
+            if (record.dosage != null)
+              _kv(theme, l.pig_detail_health_row_dosage, record.dosage!),
+            if (record.route != null)
+              _kv(
+                theme,
+                l.pig_detail_health_row_route,
+                _localizedHealthRoute(l, record.route!),
+              ),
             if (record.diagnosis != null)
-              _kv(theme, 'Diagnosis', record.diagnosis!),
+              _kv(
+                theme,
+                l.pig_detail_health_row_diagnosis,
+                record.diagnosis!,
+              ),
             if (record.costPhp != null)
-              _kv(theme, 'Cost', '₱${record.costPhp!.toStringAsFixed(2)}'),
+              _kv(
+                theme,
+                l.pig_detail_health_row_cost,
+                formatCurrencyPhp(context, record.costPhp!),
+              ),
             if (record.withdrawalEndDate != null) ...[
               const SizedBox(height: 8),
               Container(
@@ -529,8 +564,12 @@ class _HealthCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Withdrawal until '
-                  '${DateFormat.yMMMd().format(record.withdrawalEndDate!.toDate())}',
+                  l.pig_detail_health_withdrawal_until(
+                    formatMediumDate(
+                      context,
+                      record.withdrawalEndDate!.toDate(),
+                    ),
+                  ),
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: theme.colorScheme.error,
                     fontWeight: FontWeight.w700,
@@ -612,13 +651,14 @@ class _BreedingTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final canBreed = pig.sex == PigSex.female &&
         (pig.stage == PigStage.sow || pig.stage == PigStage.gilt);
     if (!canBreed) {
-      return const EmptyState(
+      return EmptyState(
         icon: Iconsax.heart,
-        title: 'Breeding does not apply',
-        subtitle: 'Only sows and gilts can be bred.',
+        title: l.pig_detail_breeding_not_applicable_title,
+        subtitle: l.pig_detail_breeding_not_applicable_subtitle,
       );
     }
     final recordsAsync = ref.watch(
@@ -628,7 +668,7 @@ class _BreedingTab extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.heart),
-        label: const Text('Log breeding'),
+        label: Text(l.pig_detail_breeding_fab_log),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -639,10 +679,10 @@ class _BreedingTab extends ConsumerWidget {
       body: recordsAsync.when(
         data: (records) {
           if (records.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.heart,
-              title: 'No breeding records yet',
-              subtitle: 'Tap "Log breeding" to record an insemination.',
+              title: l.pig_detail_breeding_no_records_title,
+              subtitle: l.pig_detail_breeding_no_records_subtitle,
             );
           }
           return ListView(
@@ -676,19 +716,20 @@ class _BreedingTab extends ConsumerWidget {
     WidgetRef ref,
     BreedingRecord r,
   ) async {
+    final l = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Pregnancy check'),
-        content: const Text('Was the sow confirmed pregnant?'),
+        title: Text(l.breeding_pregnancy_check_dialog_title),
+        content: Text(l.breeding_pregnancy_check_dialog_body),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No / Failed'),
+            child: Text(l.breeding_pregnancy_check_no),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Yes / Confirmed'),
+            child: Text(l.breeding_pregnancy_check_yes),
           ),
         ],
       ),
@@ -713,7 +754,9 @@ class _BreedingTab extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not record check: $e')),
+          SnackBar(
+            content: Text(l.pig_detail_breeding_check_error(e.toString())),
+          ),
         );
       }
     }
@@ -734,6 +777,7 @@ class _BreedingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final r = record;
     return Card(
       child: Padding(
@@ -745,7 +789,7 @@ class _BreedingCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    r.method.label,
+                    _localizedBreedingMethod(l, r.method),
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
@@ -753,18 +797,24 @@ class _BreedingCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            _row(theme, 'Inseminated',
-                DateFormat.yMMMd().format(r.inseminationDate.toDate())),
-            _row(theme, 'Expected farrow',
-                DateFormat.yMMMd().format(r.expectedFarrowingDate.toDate())),
-            _row(theme, 'Boar', r.boarId),
+            _row(
+              theme,
+              l.pig_detail_breeding_row_inseminated,
+              formatMediumDate(context, r.inseminationDate.toDate()),
+            ),
+            _row(
+              theme,
+              l.pig_detail_breeding_row_expected,
+              formatMediumDate(context, r.expectedFarrowingDate.toDate()),
+            ),
+            _row(theme, l.pig_detail_breeding_row_boar, r.boarId),
             if (r.status == BreedingStatus.planned) ...[
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
                 child: OutlinedButton.icon(
                   icon: const Icon(Iconsax.calendar_tick, size: 20),
-                  label: const Text('Pregnancy check'),
+                  label: Text(l.pig_detail_breeding_action_pregnancy_check),
                   onPressed: onPregnancyCheck,
                 ),
               ),
@@ -774,7 +824,7 @@ class _BreedingCard extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.child_friendly, size: 20),
-                  label: const Text('Log farrowing'),
+                  label: Text(l.pig_detail_breeding_action_farrow),
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -832,6 +882,7 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final color = _color(theme.colorScheme);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -840,7 +891,7 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        status.label,
+        _localizedBreedingStatus(l, status),
         style: theme.textTheme.labelMedium?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,
@@ -857,6 +908,7 @@ class _SoldBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
     final saleAsync = ref.watch(
       saleForPigProvider((farmId: pig.farmId, pigId: pig.id)),
     );
@@ -865,14 +917,20 @@ class _SoldBanner extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 16),
       child: ListTile(
         leading: Icon(Iconsax.tag, color: theme.colorScheme.primary),
-        title: Text('Sold', style: theme.textTheme.titleMedium),
+        title: Text(
+          l.pig_detail_sold_banner_title,
+          style: theme.textTheme.titleMedium,
+        ),
         subtitle: saleAsync.when(
           data: (sale) => sale == null
-              ? const Text('— no sale record found —')
+              ? Text(l.pig_detail_sold_banner_no_record)
               : Text(
-                  '${DateFormat.yMMMd().format(sale.saleDate.toDate())} · ${sale.buyerName}',
+                  l.pig_detail_sold_banner_subtitle(
+                    formatMediumDate(context, sale.saleDate.toDate()),
+                    sale.buyerName,
+                  ),
                 ),
-          loading: () => const Text('Loading sale details…'),
+          loading: () => Text(l.pig_detail_sold_banner_loading),
           error: (e, _) => Text('$e'),
         ),
         trailing: saleAsync.maybeWhen(
@@ -892,5 +950,64 @@ class _SoldBanner extends ConsumerWidget {
         },
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Enum-to-label helpers (file-private)
+//
+// These live next to the screen because they are pure UI mappings and the
+// underlying enums are also referenced by sibling screens. We keep them as
+// top-level (not extension methods on the enums) so the domain layer stays
+// import-free from `AppLocalizations`.
+// ---------------------------------------------------------------------------
+
+String _localizedBreedingMethod(AppLocalizations l, BreedingMethod m) {
+  switch (m) {
+    case BreedingMethod.natural:
+      return l.breeding_method_natural;
+    case BreedingMethod.ai:
+      return l.breeding_method_ai;
+  }
+}
+
+String _localizedBreedingStatus(AppLocalizations l, BreedingStatus s) {
+  switch (s) {
+    case BreedingStatus.planned:
+      return l.breeding_status_planned;
+    case BreedingStatus.confirmed:
+      return l.breeding_status_confirmed;
+    case BreedingStatus.farrowed:
+      return l.breeding_status_farrowed;
+    case BreedingStatus.failed:
+      return l.breeding_status_failed;
+    case BreedingStatus.aborted:
+      return l.breeding_status_aborted;
+  }
+}
+
+String _localizedHealthType(AppLocalizations l, HealthEventType t) {
+  switch (t) {
+    case HealthEventType.vaccination:
+      return l.health_event_type_vaccination;
+    case HealthEventType.treatment:
+      return l.health_event_type_treatment;
+    case HealthEventType.checkup:
+      return l.health_event_type_checkup;
+    case HealthEventType.deworming:
+      return l.health_event_type_deworming;
+  }
+}
+
+String _localizedHealthRoute(AppLocalizations l, HealthRoute r) {
+  switch (r) {
+    case HealthRoute.oral:
+      return l.health_route_oral;
+    case HealthRoute.im:
+      return l.health_route_im;
+    case HealthRoute.sc:
+      return l.health_route_sc;
+    case HealthRoute.topical:
+      return l.health_route_topical;
   }
 }

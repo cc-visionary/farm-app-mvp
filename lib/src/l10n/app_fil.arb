@@ -788,5 +788,8 @@
   "invite_member_role_label": "Tungkulin",
   "invite_member_submit": "Ipadala ang imbitasyon",
   "invite_member_email_required": "Kailangan ang email.",
-  "invite_member_owner_omitted_note": "Ang tungkulin ng Owner ay hindi kasama: isang owner lang per farm; ang ownership transfer ay hiwalay na flow."
+  "invite_member_owner_omitted_note": "Ang tungkulin ng Owner ay hindi kasama: isang owner lang per farm; ang ownership transfer ay hiwalay na flow.",
+
+  "photo_upload_retry_pending": "Hindi na-upload ang larawan. Susubukang muli kapag online.",
+  "photo_upload_terminal": "Hindi na-upload ang larawan: {code}."
 }

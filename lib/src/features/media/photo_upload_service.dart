@@ -1,12 +1,24 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import '../../core/errors/photo_upload_error.dart';
 import 'photo_upload_queue.dart';
 
 /// Uploads photos to Firebase Storage and attaches the resulting URL onto the
-/// owning Firestore record. On failure, the upload is enqueued for retry.
+/// owning Firestore record.
+///
+/// Errors are classified via [PhotoUploadError.classify]:
+/// - **Retryable** failures (network, server unavailable, unknown) are
+///   enqueued for a future flush.
+/// - **Terminal** failures (auth, permission, quota, invalid argument) are
+///   NOT enqueued — looping on a permanently-broken upload would never
+///   succeed and would silently consume battery.
+///
+/// Either way, the classified error is pushed onto [errorStream] so the UI
+/// layer can surface a SnackBar / banner appropriate to the kind.
 class PhotoUploadService {
   PhotoUploadService(this._storage, this._firestore, this._queue);
 
@@ -14,10 +26,16 @@ class PhotoUploadService {
   final FirebaseFirestore _firestore;
   final PhotoUploadQueue _queue;
 
+  final _errorController = StreamController<PhotoUploadError>.broadcast();
+
+  /// Broadcast stream of classified upload errors. The UI listens on this via
+  /// `photoUploadErrorStreamProvider` to show user-facing messages.
+  Stream<PhotoUploadError> get errorStream => _errorController.stream;
+
   /// Uploads [file] to [storagePath], then writes the public URL onto the
   /// Firestore doc at [recordPath] under [fieldName]. Returns the URL on
-  /// success. On any failure, the upload is enqueued and the method returns
-  /// `null`.
+  /// success. On any failure, the error is classified, the upload is
+  /// enqueued only if retryable, and `null` is returned.
   Future<String?> uploadAndAttach({
     required File file,
     required String storagePath,
@@ -34,15 +52,20 @@ class PhotoUploadService {
         url: url,
       );
       return url;
-    } catch (_) {
-      await _queue.enqueue(
-        QueuedUpload(
-          localPath: file.path,
-          storagePath: storagePath,
-          recordPath: recordPath,
-          fieldName: fieldName,
-        ),
-      );
+    } catch (e) {
+      final classified = PhotoUploadError.classify(e);
+      if (classified.kind == PhotoUploadErrorKind.retryable) {
+        await _queue.enqueue(
+          QueuedUpload(
+            localPath: file.path,
+            storagePath: storagePath,
+            recordPath: recordPath,
+            fieldName: fieldName,
+          ),
+        );
+      }
+      // Always surface to UI; UI decides messaging by kind.
+      _errorController.add(classified);
       return null;
     }
   }
@@ -65,8 +88,9 @@ class PhotoUploadService {
   }
 
   /// Re-attempts all queued uploads. Successful entries are removed from the
-  /// queue; failures stay queued for the next attempt. Call this on
-  /// connectivity restore.
+  /// queue; retryable failures stay queued for the next attempt. Terminal
+  /// failures are removed from the queue (we don't loop forever) and
+  /// surfaced on [errorStream]. Call this on connectivity restore.
   Future<void> flushQueue() async {
     final list = await _queue.all();
     for (final q in list) {
@@ -86,9 +110,21 @@ class PhotoUploadService {
           url: url,
         );
         await _queue.remove(q);
-      } catch (_) {
-        // Keep in queue for next attempt.
+      } catch (e) {
+        final classified = PhotoUploadError.classify(e);
+        if (classified.kind == PhotoUploadErrorKind.terminal) {
+          // Don't loop forever on a permanently-broken upload.
+          await _queue.remove(q);
+          _errorController.add(classified);
+        }
+        // Retryable: leave in queue for next flush; no UI surfacing here
+        // (the user was already told at first-attempt time).
       }
     }
+  }
+
+  /// Closes the internal error stream. Call on app teardown.
+  void dispose() {
+    _errorController.close();
   }
 }

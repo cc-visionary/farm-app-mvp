@@ -868,5 +868,11 @@
   "invite_member_role_label": "Role",
   "invite_member_submit": "Send invitation",
   "invite_member_email_required": "Email required.",
-  "invite_member_owner_omitted_note": "Owner role is omitted: only one owner per farm; ownership transfer is a separate flow."
+  "invite_member_owner_omitted_note": "Owner role is omitted: only one owner per farm; ownership transfer is a separate flow.",
+
+  "photo_upload_retry_pending": "Couldn't upload photo. Will retry when online.",
+  "photo_upload_terminal": "Couldn't upload photo: {code}.",
+  "@photo_upload_terminal": {
+    "placeholders": {"code": {"type": "String"}}
+  }
 }

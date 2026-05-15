@@ -2,6 +2,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/errors/photo_upload_error.dart';
 import '../activity/application/activity_providers.dart';
 import 'photo_upload_queue.dart';
 import 'photo_upload_service.dart';
@@ -28,4 +29,13 @@ final photoUploadServiceProvider = Provider<PhotoUploadService?>((ref) {
     ref.watch(firestoreProvider),
     queue,
   );
+});
+
+/// Broadcast stream of classified photo-upload errors. The [AppShell]
+/// listens on this and surfaces a SnackBar (retryable vs terminal copy).
+/// Emits an empty stream while [photoUploadServiceProvider] is still loading.
+final photoUploadErrorStreamProvider = StreamProvider<PhotoUploadError>((ref) {
+  final svc = ref.watch(photoUploadServiceProvider);
+  if (svc == null) return const Stream.empty();
+  return svc.errorStream;
 });

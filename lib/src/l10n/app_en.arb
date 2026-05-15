@@ -462,5 +462,97 @@
   "purchase_log_line_unit_cost_required": "Line {number}: unit cost must be a number.",
   "@purchase_log_line_unit_cost_required": {
     "placeholders": {"number": {"type": "int"}}
-  }
+  },
+  "sales_list_title": "Sales",
+  "sales_list_empty_title": "No sales logged",
+  "sales_list_empty_subtitle": "Tap \"Log sale\" to record your first transaction.",
+  "sales_list_fab_log": "Log sale",
+  "sales_card_heads_weight": "{heads} · {weight} kg",
+  "@sales_card_heads_weight": {
+    "placeholders": {"heads": {"type": "String"}, "weight": {"type": "String"}}
+  },
+  "payment_method_cash": "Cash",
+  "payment_method_bank_transfer": "Bank transfer",
+  "payment_method_gcash": "GCash",
+  "payment_method_check": "Check",
+  "payment_method_other": "Other",
+  "payment_status_paid": "Paid",
+  "payment_status_partial": "Partial",
+  "payment_status_unpaid": "Unpaid",
+
+  "sale_detail_title": "Sale",
+  "sale_detail_line_items_section": "LINE ITEMS",
+  "sale_detail_total_label": "Total",
+  "sale_detail_meta_heads_weight": "{heads} heads · {weight} kg",
+  "@sale_detail_meta_heads_weight": {
+    "placeholders": {"heads": {"type": "int"}, "weight": {"type": "String"}}
+  },
+  "sale_detail_line_meta": "{weight} kg · ₱{pricePerKg}/kg",
+  "@sale_detail_line_meta": {
+    "placeholders": {"weight": {"type": "String"}, "pricePerKg": {"type": "String"}}
+  },
+  "sale_detail_amount_paid_label": "Amount paid",
+
+  "sale_log_title": "Log sale",
+  "sale_log_section_buyer": "BUYER",
+  "sale_log_buyer_hint": "Buyer name",
+  "sale_log_buyer_contact_hint": "Contact (optional)",
+  "sale_log_section_date": "DATE",
+  "sale_log_section_pigs": "PIGS IN SALE",
+  "sale_log_add_pigs": "Add pigs",
+  "sale_log_no_eligible_pigs": "No more eligible pigs to add.",
+  "sale_log_picker_title": "Pick pigs",
+  "sale_log_picker_add_button": "Add ({count})",
+  "@sale_log_picker_add_button": {"placeholders": {"count": {"type": "int"}}},
+  "sale_log_picker_search_hint": "Search by tag ID",
+  "sale_log_picker_subtitle": "{stage} · {weight} kg",
+  "@sale_log_picker_subtitle": {
+    "placeholders": {"stage": {"type": "String"}, "weight": {"type": "String"}}
+  },
+  "sale_log_row_weight_label": "Weight kg",
+  "sale_log_row_price_label": "₱/kg",
+  "sale_log_row_line": "Line: ₱{value}",
+  "@sale_log_row_line": {"placeholders": {"value": {"type": "String"}}},
+  "sale_log_totals_heads_weight": "{heads} heads · {weight} kg",
+  "@sale_log_totals_heads_weight": {
+    "placeholders": {"heads": {"type": "int"}, "weight": {"type": "String"}}
+  },
+  "sale_log_total_revenue_label": "Total revenue",
+  "sale_log_section_payment": "PAYMENT",
+  "sale_log_amount_paid_label": "Amount paid (₱)",
+  "sale_log_submit": "Save sale",
+  "sale_log_buyer_required": "Buyer is required.",
+  "sale_log_pigs_required": "Add at least one pig.",
+  "sale_log_weight_required": "Pig {tagId}: weight must be positive.",
+  "@sale_log_weight_required": {"placeholders": {"tagId": {"type": "String"}}},
+  "sale_log_price_required": "Pig {tagId}: price/kg must be positive.",
+  "@sale_log_price_required": {"placeholders": {"tagId": {"type": "String"}}},
+  "sale_log_partial_amount_invalid": "Partial-payment amount must be > 0 and < total.",
+  "sale_log_pig_not_active": "Pig {tagId} is not active.",
+  "@sale_log_pig_not_active": {"placeholders": {"tagId": {"type": "String"}}},
+
+  "expenses_list_title": "Expenses",
+  "expenses_list_empty_title": "No expenses logged",
+  "expenses_list_empty_subtitle": "Tap \"Log expense\" to record your first expense.",
+  "expenses_list_no_match_title": "No matching expenses",
+  "expenses_list_no_match_subtitle": "Try clearing the category filter.",
+  "expenses_list_fab_log": "Log expense",
+  "expenses_list_total_label": "Total",
+  "expense_category_feed": "Feed",
+  "expense_category_medicine": "Medicine",
+  "expense_category_labor": "Labor",
+  "expense_category_utilities": "Utilities",
+  "expense_category_equipment": "Equipment",
+  "expense_category_maintenance": "Maintenance",
+  "expense_category_other": "Other",
+
+  "expense_log_title": "Log expense",
+  "expense_log_section_category": "CATEGORY",
+  "expense_log_section_description": "DESCRIPTION",
+  "expense_log_description_hint": "What was this expense for?",
+  "expense_log_section_amount": "AMOUNT",
+  "expense_log_section_date": "DATE",
+  "expense_log_submit": "Save expense",
+  "expense_log_description_required": "Description is required.",
+  "expense_log_amount_required": "Amount must be a positive number."
 }

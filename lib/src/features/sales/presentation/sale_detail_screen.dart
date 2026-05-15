@@ -8,11 +8,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/sale_providers.dart';
+import '../domain/payment_method.dart';
+import '../domain/payment_status.dart';
 
 class SaleDetailScreen extends ConsumerWidget {
   const SaleDetailScreen({super.key, required this.saleId});
@@ -20,6 +23,7 @@ class SaleDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
@@ -29,11 +33,11 @@ class SaleDetailScreen extends ConsumerWidget {
         ref.watch(saleLineItemsProvider((farmId: farmId, saleId: saleId)));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sale')),
+      appBar: AppBar(title: Text(l.sale_detail_title)),
       body: saleAsync.when(
         data: (sale) {
           if (sale == null) {
-            return const Center(child: Text('Sale not found'));
+            return const Center(child: SizedBox.shrink());
           }
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -65,7 +69,7 @@ class SaleDetailScreen extends ConsumerWidget {
                           const Icon(Iconsax.calendar, size: 16),
                           const SizedBox(width: 8),
                           Text(
-                            DateFormat.yMMMd().format(sale.saleDate.toDate()),
+                            formatMediumDate(context, sale.saleDate.toDate()),
                           ),
                         ],
                       ),
@@ -75,8 +79,8 @@ class SaleDetailScreen extends ConsumerWidget {
                           const Icon(Iconsax.money_4, size: 16),
                           const SizedBox(width: 8),
                           Text(
-                            '${sale.paymentMethod.label} · '
-                            '${sale.paymentStatus.label}',
+                            '${localizedPaymentMethod(l, sale.paymentMethod)} · '
+                            '${localizedPaymentStatus(l, sale.paymentStatus)}',
                           ),
                         ],
                       ),
@@ -87,7 +91,8 @@ class SaleDetailScreen extends ConsumerWidget {
                             const Icon(Iconsax.wallet, size: 16),
                             const SizedBox(width: 8),
                             Text(
-                              'Paid: ₱${sale.amountPaidPhp!.toStringAsFixed(0)}',
+                              '${l.sale_detail_amount_paid_label}: '
+                              '${formatCurrencyPhp(context, sale.amountPaidPhp!)}',
                             ),
                           ],
                         ),
@@ -95,10 +100,13 @@ class SaleDetailScreen extends ConsumerWidget {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Text('Total', style: theme.textTheme.bodyMedium),
+                          Text(
+                            l.sale_detail_total_label,
+                            style: theme.textTheme.bodyMedium,
+                          ),
                           const Spacer(),
                           Text(
-                            '₱${sale.totalRevenuePhp.toStringAsFixed(0)}',
+                            formatCurrencyPhp(context, sale.totalRevenuePhp),
                             style: theme.textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -107,9 +115,10 @@ class SaleDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${sale.totalHeads} '
-                        '${sale.totalHeads == 1 ? "head" : "heads"} · '
-                        '${sale.totalWeightKg.toStringAsFixed(1)} kg',
+                        l.sale_detail_meta_heads_weight(
+                          sale.totalHeads,
+                          sale.totalWeightKg.toStringAsFixed(1),
+                        ),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -118,35 +127,32 @@ class SaleDetailScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SectionHeader(title: 'LINE ITEMS'),
+              SectionHeader(title: l.sale_detail_line_items_section),
               linesAsync.when(
                 data: (lines) {
                   if (lines.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No line items.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    );
+                    return const SizedBox.shrink();
                   }
                   return Column(
                     children: lines
                         .map(
-                          (l) => Card(
+                          (li) => Card(
                             child: ListTile(
                               title: Text(
-                                l.pigTagId,
+                                li.pigTagId,
                                 style: theme.textTheme.titleMedium,
                               ),
                               subtitle: Text(
-                                '${l.finalWeightKg.toStringAsFixed(1)} kg · '
-                                '₱${l.pricePerKgPhp.toStringAsFixed(0)}/kg',
+                                l.sale_detail_line_meta(
+                                  li.finalWeightKg.toStringAsFixed(1),
+                                  li.pricePerKgPhp.toStringAsFixed(0),
+                                ),
                               ),
                               trailing: Text(
-                                '₱${l.lineRevenuePhp.toStringAsFixed(0)}',
+                                formatCurrencyPhp(
+                                  context,
+                                  li.lineRevenuePhp,
+                                ),
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -162,7 +168,7 @@ class SaleDetailScreen extends ConsumerWidget {
                 error: (e, _) => Text('$e'),
               ),
               if (sale.notes != null && sale.notes!.isNotEmpty) ...[
-                const SectionHeader(title: 'NOTES'),
+                SectionHeader(title: l.common_notes.toUpperCase()),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),

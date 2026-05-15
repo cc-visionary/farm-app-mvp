@@ -10,8 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/expense_providers.dart';
@@ -47,6 +49,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
@@ -54,11 +57,11 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
     final desc = _description.text.trim();
     final amount = double.tryParse(_amount.text.trim());
     if (desc.isEmpty) {
-      _snack('Description is required.');
+      _snack(l.expense_log_description_required);
       return;
     }
     if (amount == null || amount <= 0) {
-      _snack('Amount must be a positive number.');
+      _snack(l.expense_log_amount_required);
       return;
     }
 
@@ -86,16 +89,17 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Log expense')),
+      appBar: AppBar(title: Text(l.expense_log_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'CATEGORY',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.expense_log_section_category,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             Wrap(
               spacing: 8,
@@ -103,34 +107,30 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
               children: ExpenseCategory.values
                   .map(
                     (c) => ChoiceChip(
-                      label: Text(c.label),
+                      label: Text(localizedExpenseCategory(l, c)),
                       selected: _category == c,
                       onSelected: (_) => setState(() => _category = c),
                     ),
                   )
                   .toList(),
             ),
-            const SectionHeader(title: 'DESCRIPTION'),
+            SectionHeader(title: l.expense_log_section_description),
             TextField(
               controller: _description,
-              decoration: const InputDecoration(
-                hintText: 'What was this expense for?',
+              decoration: InputDecoration(
+                hintText: l.expense_log_description_hint,
               ),
             ),
-            const SectionHeader(title: 'AMOUNT'),
+            SectionHeader(title: l.expense_log_section_amount),
             TextField(
               controller: _amount,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(prefixText: '₱ '),
             ),
-            const SectionHeader(title: 'DATE'),
+            SectionHeader(title: l.expense_log_section_date),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(
-                '${_date.year}-'
-                '${_date.month.toString().padLeft(2, '0')}-'
-                '${_date.day.toString().padLeft(2, '0')}',
-              ),
+              title: Text(formatMediumDate(context, _date)),
               trailing: const Icon(Iconsax.calendar),
               onTap: () async {
                 final picked = await AdaptiveDatePicker.show(
@@ -142,7 +142,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                 if (picked != null) setState(() => _date = picked);
               },
             ),
-            const SectionHeader(title: 'NOTES'),
+            SectionHeader(title: l.common_notes.toUpperCase()),
             TextField(controller: _notes, maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
@@ -153,7 +153,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                       width: 24,
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
-                  : const Text('Save expense'),
+                  : Text(l.expense_log_submit),
             ),
           ],
         ),

@@ -7,9 +7,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/sale_providers.dart';
 import '../domain/payment_status.dart';
@@ -22,15 +23,16 @@ class SalesListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final salesAsync = ref.watch(salesStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sales')),
+      appBar: AppBar(title: Text(l.sales_list_title)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.add),
-        label: const Text('Log sale'),
+        label: Text(l.sales_list_fab_log),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const LogSaleScreen()),
@@ -39,10 +41,10 @@ class SalesListScreen extends ConsumerWidget {
       body: salesAsync.when(
         data: (list) {
           if (list.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Iconsax.tag,
-              title: 'No sales logged',
-              subtitle: 'Tap "Log sale" to record your first transaction.',
+              title: l.sales_list_empty_title,
+              subtitle: l.sales_list_empty_subtitle,
             );
           }
           return ListView.builder(
@@ -88,13 +90,14 @@ class _SaleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Card(
       child: ListTile(
         title: Text(sale.buyerName, style: theme.textTheme.titleMedium),
         subtitle: Text(
-          '${DateFormat.yMMMd().format(sale.saleDate.toDate())} · '
-          '${sale.totalHeads} ${sale.totalHeads == 1 ? "head" : "heads"} · '
+          '${formatMediumDate(context, sale.saleDate.toDate())} · '
+          '${l.common_heads_count(sale.totalHeads)} · '
           '${sale.totalWeightKg.toStringAsFixed(1)} kg',
         ),
         trailing: Column(
@@ -103,7 +106,7 @@ class _SaleCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '₱${sale.totalRevenuePhp.toStringAsFixed(0)}',
+              formatCurrencyPhp(context, sale.totalRevenuePhp),
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -116,7 +119,7 @@ class _SaleCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                sale.paymentStatus.label,
+                localizedPaymentStatus(l, sale.paymentStatus),
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: _onStatusColor(context, sale.paymentStatus),
                   fontWeight: FontWeight.w700,

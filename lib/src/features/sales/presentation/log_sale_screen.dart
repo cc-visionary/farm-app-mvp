@@ -16,8 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/adaptive_date_picker.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
 import '../../farms/application/farm_providers.dart';
 import '../../pigs/application/pig_providers.dart';
@@ -97,6 +99,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
   }
 
   Future<void> _addPigs() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     if (farmId == null) return;
     final allPigs =
@@ -112,7 +115,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
         )
         .toList();
     if (pool.isEmpty) {
-      _snack('No more eligible pigs to add.');
+      _snack(l.sale_log_no_eligible_pigs);
       return;
     }
     final picked = await showModalBottomSheet<List<Pig>>(
@@ -141,17 +144,18 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context);
     final farmId = ref.read(selectedFarmIdProvider);
     final user = ref.read(authStateChangesProvider).asData?.value;
     if (farmId == null || user == null) return;
 
     final buyer = _buyer.text.trim();
     if (buyer.isEmpty) {
-      _snack('Buyer is required.');
+      _snack(l.sale_log_buyer_required);
       return;
     }
     if (_rows.isEmpty) {
-      _snack('Add at least one pig.');
+      _snack(l.sale_log_pigs_required);
       return;
     }
 
@@ -160,11 +164,11 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
       final w = double.tryParse(r.weight.text.trim());
       final p = double.tryParse(r.pricePerKg.text.trim());
       if (w == null || w <= 0) {
-        _snack('Pig ${r.pig.tagId}: weight must be positive.');
+        _snack(l.sale_log_weight_required(r.pig.tagId));
         return;
       }
       if (p == null || p <= 0) {
-        _snack('Pig ${r.pig.tagId}: price/kg must be positive.');
+        _snack(l.sale_log_price_required(r.pig.tagId));
         return;
       }
       inputs.add(
@@ -181,7 +185,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
     if (_status == PaymentStatus.partial) {
       paid = double.tryParse(_amountPaid.text.trim());
       if (paid == null || paid <= 0 || paid >= _totalRevenue) {
-        _snack('Partial-payment amount must be > 0 and < total.');
+        _snack(l.sale_log_partial_amount_invalid);
         return;
       }
     }
@@ -214,36 +218,33 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Log sale')),
+      appBar: AppBar(title: Text(l.sale_log_title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SectionHeader(
-              title: 'BUYER',
-              padding: EdgeInsets.only(bottom: 8),
+            SectionHeader(
+              title: l.sale_log_section_buyer,
+              padding: const EdgeInsets.only(bottom: 8),
             ),
             TextField(
               controller: _buyer,
-              decoration: const InputDecoration(hintText: 'Buyer name'),
+              decoration: InputDecoration(hintText: l.sale_log_buyer_hint),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _contact,
               decoration:
-                  const InputDecoration(hintText: 'Contact (optional)'),
+                  InputDecoration(hintText: l.sale_log_buyer_contact_hint),
             ),
-            const SectionHeader(title: 'DATE'),
+            SectionHeader(title: l.sale_log_section_date),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(
-                '${_date.year}-'
-                '${_date.month.toString().padLeft(2, '0')}-'
-                '${_date.day.toString().padLeft(2, '0')}',
-              ),
+              title: Text(formatMediumDate(context, _date)),
               trailing: const Icon(Iconsax.calendar),
               onTap: () async {
                 final picked = await AdaptiveDatePicker.show(
@@ -255,7 +256,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                 if (picked != null) setState(() => _date = picked);
               },
             ),
-            const SectionHeader(title: 'PIGS IN SALE'),
+            SectionHeader(title: l.sale_log_section_pigs),
             ..._rows.asMap().entries.map((entry) {
               final i = entry.key;
               final r = entry.value;
@@ -274,7 +275,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                           const Spacer(),
                           IconButton(
                             icon: const Icon(Iconsax.trash),
-                            tooltip: 'Remove pig',
+                            tooltip: l.common_remove,
                             onPressed: () => setState(() {
                               _rows.removeAt(i).dispose();
                             }),
@@ -290,8 +291,8 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                                   const TextInputType.numberWithOptions(
                                 decimal: true,
                               ),
-                              decoration: const InputDecoration(
-                                labelText: 'Weight kg',
+                              decoration: InputDecoration(
+                                labelText: l.sale_log_row_weight_label,
                               ),
                               onChanged: (_) => setState(() {}),
                             ),
@@ -304,8 +305,8 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                                   const TextInputType.numberWithOptions(
                                 decimal: true,
                               ),
-                              decoration: const InputDecoration(
-                                labelText: '₱/kg',
+                              decoration: InputDecoration(
+                                labelText: l.sale_log_row_price_label,
                               ),
                               onChanged: (_) => setState(() {}),
                             ),
@@ -316,7 +317,9 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'Line: ₱${r.lineRevenue.toStringAsFixed(0)}',
+                          l.sale_log_row_line(
+                            r.lineRevenue.toStringAsFixed(0),
+                          ),
                           style: theme.textTheme.labelLarge,
                         ),
                       ),
@@ -327,7 +330,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
             }),
             OutlinedButton.icon(
               icon: const Icon(Iconsax.add),
-              label: const Text('Add pigs'),
+              label: Text(l.sale_log_add_pigs),
               onPressed: _addPigs,
             ),
             const SizedBox(height: 16),
@@ -343,9 +346,10 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                   Row(
                     children: [
                       Text(
-                        '${_rows.length} '
-                        '${_rows.length == 1 ? "head" : "heads"} · '
-                        '${_totalWeight.toStringAsFixed(1)} kg',
+                        l.sale_log_totals_heads_weight(
+                          _rows.length,
+                          _totalWeight.toStringAsFixed(1),
+                        ),
                         style: theme.textTheme.bodyMedium,
                       ),
                       const Spacer(),
@@ -355,12 +359,12 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                   Row(
                     children: [
                       Text(
-                        'Total revenue',
+                        l.sale_log_total_revenue_label,
                         style: theme.textTheme.titleMedium,
                       ),
                       const Spacer(),
                       Text(
-                        '₱${_totalRevenue.toStringAsFixed(0)}',
+                        formatCurrencyPhp(context, _totalRevenue),
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -370,7 +374,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                 ],
               ),
             ),
-            const SectionHeader(title: 'PAYMENT'),
+            SectionHeader(title: l.sale_log_section_payment),
             SizedBox(
               width: double.infinity,
               child: SingleChildScrollView(
@@ -380,7 +384,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                       .map(
                         (m) => ButtonSegment(
                           value: m,
-                          label: Text(m.label),
+                          label: Text(localizedPaymentMethod(l, m)),
                         ),
                       )
                       .toList(),
@@ -396,7 +400,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
               children: PaymentStatus.values
                   .map(
                     (s) => ChoiceChip(
-                      label: Text(s.label),
+                      label: Text(localizedPaymentStatus(l, s)),
                       selected: _status == s,
                       onSelected: (_) => setState(() => _status = s),
                     ),
@@ -410,12 +414,12 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Amount paid (₱)',
+                decoration: InputDecoration(
+                  labelText: l.sale_log_amount_paid_label,
                 ),
               ),
             ],
-            const SectionHeader(title: 'NOTES'),
+            SectionHeader(title: l.common_notes.toUpperCase()),
             TextField(controller: _notes, maxLines: 3),
             const SizedBox(height: 24),
             FilledButton(
@@ -426,7 +430,7 @@ class _LogSaleScreenState extends ConsumerState<LogSaleScreen> {
                       width: 24,
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
-                  : const Text('Save sale'),
+                  : Text(l.sale_log_submit),
             ),
           ],
         ),
@@ -451,6 +455,7 @@ class _PigPickerState extends State<_PigPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final query = _search.trim().toLowerCase();
     final filtered = query.isEmpty
@@ -474,7 +479,10 @@ class _PigPickerState extends State<_PigPicker> {
           children: [
             Row(
               children: [
-                Text('Pick pigs', style: theme.textTheme.titleMedium),
+                Text(
+                  l.sale_log_picker_title,
+                  style: theme.textTheme.titleMedium,
+                ),
                 const Spacer(),
                 TextButton(
                   onPressed: _selected.isEmpty
@@ -486,14 +494,16 @@ class _PigPickerState extends State<_PigPicker> {
                                 .toList(),
                           );
                         },
-                  child: Text('Add (${_selected.length})'),
+                  child: Text(
+                    l.sale_log_picker_add_button(_selected.length),
+                  ),
                 ),
               ],
             ),
             TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search by tag ID',
-                prefixIcon: Icon(Iconsax.search_normal),
+              decoration: InputDecoration(
+                hintText: l.sale_log_picker_search_hint,
+                prefixIcon: const Icon(Iconsax.search_normal),
               ),
               onChanged: (v) => setState(() => _search = v),
             ),
@@ -502,7 +512,7 @@ class _PigPickerState extends State<_PigPicker> {
               child: filtered.isEmpty
                   ? Center(
                       child: Text(
-                        'No matching pigs.',
+                        l.pigs_list_no_match_title,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -516,8 +526,10 @@ class _PigPickerState extends State<_PigPicker> {
                         return CheckboxListTile(
                           title: Text(p.tagId),
                           subtitle: Text(
-                            '${p.stage.label} · '
-                            '${p.currentWeight?.toStringAsFixed(1) ?? "—"} kg',
+                            l.sale_log_picker_subtitle(
+                              localizedPigStage(l, p.stage),
+                              p.currentWeight?.toStringAsFixed(1) ?? '—',
+                            ),
                           ),
                           value: _selected.contains(p.id),
                           onChanged: (v) => setState(() {

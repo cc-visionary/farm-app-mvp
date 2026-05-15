@@ -7,9 +7,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/i18n/intl_helpers.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../farms/application/farm_providers.dart';
 import '../application/expense_providers.dart';
 import '../domain/expense.dart';
@@ -29,16 +30,17 @@ class _ExpensesListScreenState extends ConsumerState<ExpensesListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final farmId = ref.watch(selectedFarmIdProvider);
     if (farmId == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final expensesAsync = ref.watch(expensesStreamProvider(farmId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses')),
+      appBar: AppBar(title: Text(l.expenses_list_title)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Iconsax.add),
-        label: const Text('Log expense'),
+        label: Text(l.expenses_list_fab_log),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const LogExpenseScreen()),
@@ -54,7 +56,7 @@ class _ExpensesListScreenState extends ConsumerState<ExpensesListScreen> {
               children: ExpenseCategory.values
                   .map(
                     (c) => FilterChip(
-                      label: Text(c.label),
+                      label: Text(localizedExpenseCategory(l, c)),
                       selected: _categoryFilter == c,
                       onSelected: (sel) => setState(
                         () => _categoryFilter = sel ? c : null,
@@ -76,11 +78,11 @@ class _ExpensesListScreenState extends ConsumerState<ExpensesListScreen> {
                   return EmptyState(
                     icon: Iconsax.receipt_item,
                     title: list.isEmpty
-                        ? 'No expenses logged'
-                        : 'No matching expenses',
+                        ? l.expenses_list_empty_title
+                        : l.expenses_list_no_match_title,
                     subtitle: list.isEmpty
-                        ? 'Tap "Log expense" to record your first expense.'
-                        : 'Try clearing the category filter.',
+                        ? l.expenses_list_empty_subtitle
+                        : l.expenses_list_no_match_subtitle,
                   );
                 }
                 final total = filtered.fold<double>(
@@ -99,10 +101,13 @@ class _ExpensesListScreenState extends ConsumerState<ExpensesListScreen> {
                           .withValues(alpha: 0.4),
                       child: Row(
                         children: [
-                          Text('Total', style: theme.textTheme.titleMedium),
+                          Text(
+                            l.expenses_list_total_label,
+                            style: theme.textTheme.titleMedium,
+                          ),
                           const Spacer(),
                           Text(
-                            '₱${total.toStringAsFixed(0)}',
+                            formatCurrencyPhp(context, total),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -138,6 +143,7 @@ class _ExpenseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Card(
       child: ListTile(
@@ -146,11 +152,11 @@ class _ExpenseCard extends StatelessWidget {
           style: theme.textTheme.titleMedium,
         ),
         subtitle: Text(
-          '${expense.category.label} · '
-          '${DateFormat.yMMMd().format(expense.date.toDate())}',
+          '${localizedExpenseCategory(l, expense.category)} · '
+          '${formatMediumDate(context, expense.date.toDate())}',
         ),
         trailing: Text(
-          '₱${expense.amountPhp.toStringAsFixed(0)}',
+          formatCurrencyPhp(context, expense.amountPhp),
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
           ),

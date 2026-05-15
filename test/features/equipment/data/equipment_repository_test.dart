@@ -59,6 +59,59 @@ void main() {
     expect(eq.data()!['status'], 'needs_repair');
   });
 
+  test('updateEquipment writes equipment_updated activity atomically',
+      () async {
+    final f = FakeFirebaseFirestore();
+    final repo = EquipmentRepository(f, ActivityRepository(f));
+    final id = await repo.createEquipment(
+      farmId: 'f1',
+      name: 'Fan A',
+      type: EquipmentType.ventilation,
+      areaId: 'a1',
+      status: EquipmentStatus.inUse,
+      purchaseDate: null,
+      purchaseCostPhp: null,
+      photoUrl: null,
+      notes: null,
+      actorUserId: 'u1',
+      actorDisplayName: 'Juan',
+    );
+    final beforeActivity = (await f
+            .collection('farms')
+            .doc('f1')
+            .collection('activity')
+            .get())
+        .docs
+        .length;
+
+    await repo.updateEquipment(
+      farmId: 'f1',
+      equipmentId: id,
+      name: 'Fan A (renamed)',
+      type: EquipmentType.ventilation,
+      areaId: 'a1',
+      status: EquipmentStatus.inUse,
+      purchaseDate: null,
+      purchaseCostPhp: null,
+      photoUrl: null,
+      notes: 'updated',
+      actorUserId: 'u1',
+      actorDisplayName: 'Juan',
+    );
+
+    final afterActivity = await f
+        .collection('farms')
+        .doc('f1')
+        .collection('activity')
+        .get();
+    expect(afterActivity.docs.length, beforeActivity + 1);
+    final last = afterActivity.docs.firstWhere(
+      (d) => d.data()['action'] == 'equipment_updated',
+    );
+    expect(last.data()['entityId'], id);
+    expect(last.data()['summary'], contains('Fan A (renamed)'));
+  });
+
   test('logMaintenance writes record + activity', () async {
     final f = FakeFirebaseFirestore();
     final repo = EquipmentRepository(f, ActivityRepository(f));

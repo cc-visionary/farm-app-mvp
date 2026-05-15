@@ -165,6 +165,8 @@ class _AddEditPigScreenState extends ConsumerState<AddEditPigScreen> {
           currentWeight: weightValue,
           photoUrl: widget.existing!.photoUrl,
           notes: notesText.isEmpty ? null : notesText,
+          actorUserId: user.uid,
+          actorDisplayName: actorName,
         );
       }
       if (_photoFile != null && photoService != null) {

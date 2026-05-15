@@ -52,10 +52,60 @@ void main() {
       unitsPerPackage: null,
       lowStockThreshold: 5,
       notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'J',
     );
     final supply = await repo.streamSupplyById(farmId: 'f1', supplyId: id).first;
     expect(supply!.name, 'B');
     expect(supply.lowStockThreshold, 5);
+  });
+
+  test('updateSupply writes supply_updated activity atomically', () async {
+    final f = FakeFirebaseFirestore();
+    final repo = SupplyRepository(f, ActivityRepository(f));
+    final id = await repo.createSupply(
+      farmId: 'f1',
+      name: 'A',
+      category: SupplyCategory.feed,
+      unit: SupplyUnit.sack,
+      unitsPerPackage: null,
+      lowStockThreshold: null,
+      notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'Juan',
+    );
+    final beforeActivity = (await f
+            .collection('farms')
+            .doc('f1')
+            .collection('activity')
+            .get())
+        .docs
+        .length;
+
+    await repo.updateSupply(
+      farmId: 'f1',
+      supplyId: id,
+      name: 'B',
+      category: SupplyCategory.feed,
+      unit: SupplyUnit.sack,
+      unitsPerPackage: null,
+      lowStockThreshold: 5,
+      notes: 'updated',
+      actorUserId: 'u',
+      actorDisplayName: 'Juan',
+    );
+
+    final after = await f
+        .collection('farms')
+        .doc('f1')
+        .collection('activity')
+        .get();
+    expect(after.docs.length, beforeActivity + 1);
+    final entry = after.docs.firstWhere(
+      (d) => d.data()['action'] == 'supply_updated',
+    );
+    expect(entry.data()['entityId'], id);
+    expect(entry.data()['summary'], contains('B'));
   });
 
   test('streamSupplies returns sorted by category then name', () async {

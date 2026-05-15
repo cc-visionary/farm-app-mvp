@@ -89,6 +89,8 @@ class _State extends ConsumerState<AddEditSupplyScreen> {
           unitsPerPackage: unitsPerPackage,
           lowStockThreshold: lowStock,
           notes: notes,
+          actorUserId: user.uid,
+          actorDisplayName: actorName,
         );
       }
       if (mounted) Navigator.pop(context);

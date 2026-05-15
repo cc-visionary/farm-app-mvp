@@ -117,6 +117,8 @@ class _AddEditEquipmentScreenState
           purchaseCostPhp: cost,
           photoUrl: widget.existing!.photoUrl,
           notes: notesText.isEmpty ? null : notesText,
+          actorUserId: user.uid,
+          actorDisplayName: actorName,
         );
       }
       if (mounted) Navigator.pop(context);

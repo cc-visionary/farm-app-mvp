@@ -68,9 +68,13 @@ class EquipmentRepository {
     required double? purchaseCostPhp,
     required String? photoUrl,
     required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
   }) async {
-    await _col(farmId).doc(equipmentId).update({
-      'name': name.trim(),
+    final trimmedName = name.trim();
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(equipmentId), {
+      'name': trimmedName,
       'type': type.value,
       'areaId': areaId,
       'status': status.value,
@@ -80,6 +84,18 @@ class EquipmentRepository {
       'notes': notes,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    _activity.addActivityToBatch(
+      batch: batch,
+      farmId: farmId,
+      actorUserId: actorUserId,
+      actorDisplayName: actorDisplayName,
+      action: 'equipment_updated',
+      entityType: 'equipment',
+      entityId: equipmentId,
+      areaId: areaId,
+      summary: '$actorDisplayName updated equipment "$trimmedName"',
+    );
+    await batch.commit();
   }
 
   Future<void> deleteEquipment({

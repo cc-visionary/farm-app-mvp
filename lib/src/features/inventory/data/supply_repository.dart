@@ -60,9 +60,13 @@ class SupplyRepository {
     required int? unitsPerPackage,
     required num? lowStockThreshold,
     required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
   }) async {
-    await _col(farmId).doc(supplyId).update({
-      'name': name.trim(),
+    final trimmedName = name.trim();
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(supplyId), {
+      'name': trimmedName,
       'category': category.value,
       'unit': unit.value,
       'unitsPerPackage': unitsPerPackage,
@@ -70,6 +74,17 @@ class SupplyRepository {
       'notes': notes?.trim(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    _activity.addActivityToBatch(
+      batch: batch,
+      farmId: farmId,
+      actorUserId: actorUserId,
+      actorDisplayName: actorDisplayName,
+      action: 'supply_updated',
+      entityType: 'supply',
+      entityId: supplyId,
+      summary: '$actorDisplayName updated supply "$trimmedName"',
+    );
+    await batch.commit();
   }
 
   Future<void> deleteSupply({

@@ -85,9 +85,70 @@ void main() {
       currentWeight: null,
       photoUrl: null,
       notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'J',
     );
     final pig = await t.repo.streamPigById(farmId: 'f1', pigId: id).first;
     expect(pig!.stage, PigStage.sow);
+  });
+
+  test('updatePig writes pig_updated activity atomically', () async {
+    final t = newRepo();
+    final id = await t.repo.createPig(
+      farmId: 'f1',
+      tagId: 'P-1',
+      sex: PigSex.female,
+      breed: 'Yorkshire',
+      birthDate: Timestamp.now(),
+      sireId: null,
+      damId: null,
+      stage: PigStage.gilt,
+      currentAreaId: 'a1',
+      currentPenId: null,
+      currentWeight: null,
+      photoUrl: null,
+      notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'J',
+    );
+    final beforeActivity = (await t.firestore
+            .collection('farms')
+            .doc('f1')
+            .collection('activity')
+            .get())
+        .docs
+        .length;
+
+    await t.repo.updatePig(
+      farmId: 'f1',
+      pigId: id,
+      tagId: 'P-1',
+      sex: PigSex.female,
+      breed: 'Duroc',
+      birthDate: Timestamp.now(),
+      sireId: null,
+      damId: null,
+      stage: PigStage.sow,
+      currentAreaId: 'a1',
+      currentPenId: null,
+      currentWeight: null,
+      photoUrl: null,
+      notes: null,
+      actorUserId: 'u',
+      actorDisplayName: 'J',
+    );
+
+    final after = await t.firestore
+        .collection('farms')
+        .doc('f1')
+        .collection('activity')
+        .get();
+    expect(after.docs.length, beforeActivity + 1);
+    final entry = after.docs.firstWhere(
+      (d) => d.data()['action'] == 'pig_updated',
+    );
+    expect(entry.data()['entityId'], id);
+    expect(entry.data()['summary'], contains('P-1'));
   });
 
   test('movePig updates area + pen + writes activity', () async {

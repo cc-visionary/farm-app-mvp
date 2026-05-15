@@ -78,9 +78,13 @@ class PigRepository {
     required double? currentWeight,
     required String? photoUrl,
     required String? notes,
+    required String actorUserId,
+    required String actorDisplayName,
   }) async {
-    await _col(farmId).doc(pigId).update({
-      'tagId': tagId.trim(),
+    final trimmedTag = tagId.trim();
+    final batch = _firestore.batch();
+    batch.update(_col(farmId).doc(pigId), {
+      'tagId': trimmedTag,
       'sex': sex.value,
       'breed': breed.trim(),
       'birthDate': birthDate,
@@ -94,6 +98,18 @@ class PigRepository {
       'notes': notes,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    _activity.addActivityToBatch(
+      batch: batch,
+      farmId: farmId,
+      actorUserId: actorUserId,
+      actorDisplayName: actorDisplayName,
+      action: 'pig_updated',
+      entityType: 'pig',
+      entityId: pigId,
+      areaId: currentAreaId,
+      summary: '$actorDisplayName updated pig $trimmedTag',
+    );
+    await batch.commit();
   }
 
   Future<void> movePig({

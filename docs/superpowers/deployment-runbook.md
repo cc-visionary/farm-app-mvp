@@ -131,8 +131,15 @@ Firestore → Rules to confirm the timestamp matches your deploy.
 ### 2.3. Deploy Storage rules
 
 ```bash
-firebase deploy --only storage:rules
+firebase deploy --only storage
 ```
+
+> **Note:** use `storage`, **not** `storage:rules`. The CLI parses
+> `storage:<name>` as a deploy target (multi-bucket setup); a single-bucket
+> project has none configured, so `storage:rules` errors with
+> `Could not find rules for the following storage targets: rules`.
+> `firestore:rules` *is* valid because firestore has named sub-flags
+> (`rules`, `indexes`); storage doesn't.
 
 Source file: `storage.rules`. The v1 rule limits uploads to **5 MB per file**
 under `/farms/{farmId}/...` for authenticated farm members only.
@@ -208,7 +215,7 @@ This is the path you take whenever you edit `firestore.rules` or
    ```bash
    firebase deploy --only firestore:rules
    # or
-   firebase deploy --only storage:rules
+   firebase deploy --only storage      # NOT storage:rules — see §2.3
    ```
 5. Smoke-test the affected role flow:
    - Auth/profile changes → sign in/out, edit profile photo.
@@ -336,7 +343,7 @@ file matches the active Firebase project.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `PERMISSION_DENIED: Missing or insufficient permissions` on Firestore | Rules not deployed, or signed-in user doesn't have a `farms/{farmId}/members/{uid}` document. | Re-run `firebase deploy --only firestore:rules`. In Console → Firestore, verify `farms/{farmId}/members/{uid}` exists with `removedAt == null`. |
-| Photos won't upload (`storage/unauthorized`) | Storage rules not deployed, or user is not a farm member, or file > 5 MB. | Deploy `storage:rules`. Check file size on the client before upload (PhotoService should already enforce this). Verify membership doc as above. |
+| Photos won't upload (`storage/unauthorized`) | Storage rules not deployed, or user is not a farm member, or file > 5 MB. | Deploy with `firebase deploy --only storage` (not `storage:rules` — see §2.3). Check file size on the client before upload (PhotoService should already enforce this). Verify membership doc as above. |
 | Collection-group query throws `FAILED_PRECONDITION` with a URL in the message | A single-field collection-group index is missing. | Open the URL printed in the device console — Firestore takes you straight to a "Create index" page. Click create; the index builds in 1-5 minutes. The next query then succeeds. |
 | `App is not authorized to use Firebase Authentication` | `firebase_options.dart` (or `google-services.json` / `GoogleService-Info.plist`) is from a different project than the one Auth is enabled on. | Rerun `flutterfire configure --project=<project-id>`. Commit and rebuild. |
 | `[firebase_auth/network-request-failed]` | Device offline, or DNS blocked. | Try a different network. Auth requires online; offline sign-in is not supported by Firebase. |
@@ -433,7 +440,8 @@ firebase use --add
 
 # Deploys (always verify `firebase use` first)
 firebase deploy --only firestore:rules
-firebase deploy --only storage:rules
+firebase deploy --only storage                # NOT storage:rules — see §2.3
+firebase deploy --only firestore:rules,storage   # both rule sets in one shot
 firebase deploy --only firestore:indexes      # only if firestore.indexes.json exists
 
 # Local emulators (optional)

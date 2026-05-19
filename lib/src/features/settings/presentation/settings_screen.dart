@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../authentication/application/auth_providers.dart';
+import 'seed_test_data_section.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -75,6 +77,10 @@ class SettingsScreen extends ConsumerWidget {
               // GoRouter's redirect logic handles navigation to login.
             },
           ),
+          // DEVELOPER section — debug builds only. The kDebugMode guard
+          // lets release builds tree-shake both the section widget and the
+          // SeedDataService it depends on.
+          if (kDebugMode) const SeedTestDataSection(),
         ],
       ),
     );

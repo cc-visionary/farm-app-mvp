@@ -41,6 +41,15 @@
   "settings_language_choice_english": "Ingles",
   "settings_language_choice_filipino": "Filipino",
 
+  "settings_seed_section_title": "DEVELOPER",
+  "settings_seed_button_seed": "Mag-seed ng test data",
+  "settings_seed_button_wipe": "Burahin ang test data",
+  "settings_seed_status_done": "Tapos ✓",
+  "settings_seed_status_seeding": "Nag-seed…",
+  "settings_seed_status_wiping": "Binubura…",
+  "settings_seed_wipe_confirm_title": "Burahin ang test data?",
+  "settings_seed_wipe_confirm_body": "Burahin ang LAHAT ng test data sa farm na ito? Hindi na maaaring ibalik.",
+
   "auth_login_title": "Maligayang pagdating sa FarmApp",
   "auth_login_subtitle": "Mag-sign in sa iyong farm",
   "auth_login_email_label": "Email",

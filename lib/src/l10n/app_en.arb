@@ -47,6 +47,15 @@
   "settings_language_choice_english": "English",
   "settings_language_choice_filipino": "Filipino",
 
+  "settings_seed_section_title": "DEVELOPER",
+  "settings_seed_button_seed": "Seed test data",
+  "settings_seed_button_wipe": "Wipe test data",
+  "settings_seed_status_done": "Done ✓",
+  "settings_seed_status_seeding": "Seeding…",
+  "settings_seed_status_wiping": "Wiping…",
+  "settings_seed_wipe_confirm_title": "Wipe test data?",
+  "settings_seed_wipe_confirm_body": "Delete ALL test data in this farm? This cannot be undone.",
+
   "auth_login_title": "Welcome to FarmApp",
   "auth_login_subtitle": "Sign in to your farm",
   "auth_login_email_label": "Email",

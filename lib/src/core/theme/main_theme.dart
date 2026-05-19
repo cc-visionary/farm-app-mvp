@@ -10,6 +10,7 @@
 // Numbers (size >= 14) use `FontFeature.tabularFigures()` so counts and dates
 // align as columns.
 
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 

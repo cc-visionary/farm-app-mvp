@@ -1,6 +1,6 @@
 {
   "@@locale": "fil",
-  "@@x-translation-review-pending": "All non-trivial translations were LLM-drafted on 2026-05-15. Native speaker review pending. Search 'TRANSLATION-REVIEW' to find specific concerns.",
+  "@@x-translation-review-pending": "LLM-drafted on 2026-05-15; revisited 2026-05-19 (Tagalog review pass — typos fixed, idiom and register refined). Native-speaker sign-off still pending. Search 'TRANSLATION-REVIEW' to find remaining judgment calls.",
 
   "app_name": "FarmApp",
 
@@ -32,7 +32,7 @@
   "common_must_be_positive_int": "Dapat positibong buong numero.",
   "common_pigs_count": "{count,plural, =0{Walang baboy} =1{1 baboy} other{{count} baboy}}",
   "@common_pigs_count": {
-    "description": "TRANSLATION-REVIEW: Filipino plurals don't inflect the noun (1 baboy / 12 baboy, not 'mga baboy'). Confirm with native speaker."
+    "description": "TRANSLATION-REVIEW: Filipino plurals don't inflect the noun (1 baboy / 12 baboy) — no 'mga' prefix in tight counted contexts. This applies to all *_count ICU plurals in this file. Confirm with native speaker that bare noun reads natural in UI badges and section headers."
   },
   "common_heads_count": "{count,plural, =0{Walang ulo} =1{1 ulo} other{{count} ulo}}",
 
@@ -48,7 +48,10 @@
   "auth_login_submit": "Mag-sign in",
   "auth_login_no_account_cta": "Gumawa ng account",
   "auth_login_error_invalid_credentials": "Mali ang email o password.",
-  "auth_login_error_generic": "May naganap na error. Pakisubukang muli.",
+  "auth_login_error_generic": "May error. Subukang muli.",
+  "@auth_login_error_generic": {
+    "description": "TRANSLATION-REVIEW: shortened from 'May naganap na error. Pakisubukang muli.' to match the project's direct, non-apologetic voice. The 'paki-' (please) prefix was dropped — workplace tone, not customer-service tone."
+  },
 
   "auth_signup_title": "Gumawa ng account",
   "auth_signup_email_label": "Email",
@@ -98,7 +101,7 @@
   "pig_status_sold": "Naibenta",
   "pig_status_culled": "Inalis",
   "@pig_status_culled": {
-    "description": "TRANSLATION-REVIEW: 'Inalis' = removed. No clean Filipino equivalent for industry term 'culled'; 'Pinatay' (killed) is more accurate but harsher. Confirm with native speaker."
+    "description": "TRANSLATION-REVIEW: 'Inalis' (removed) softens the industry term 'culled' (deliberately killed for health/economic reasons). 'Pinatay' is literally accurate but reads harsh next to 'Patay' (deceased) and is emotionally heavier than the EN. Could also keep English 'Culled' — many PH commercial farms do. Native speaker call."
   },
   "pig_status_deceased": "Patay",
 
@@ -132,7 +135,7 @@
   "pig_detail_profile_notes": "Mga tala",
   "pig_detail_profile_mark_deceased": "Markahan na patay",
   "pig_detail_profile_mark_deceased_confirm_title": "Markahan na patay?",
-  "pig_detail_profile_mark_deceased_confirm_body": "Hindi na ito mababawi. Ililipat ang baboy palabas sa aktibong kawan.",
+  "pig_detail_profile_mark_deceased_confirm_body": "Hindi na ito mababawi. Aalisin ang baboy sa aktibong kawan.",
   "pig_detail_breeding_not_applicable_title": "Hindi nalalapat ang pagpapalahi",
   "pig_detail_breeding_not_applicable_subtitle": "Inahin at dumalaga lang ang puwedeng palahiin.",
   "pig_detail_breeding_no_records_title": "Wala pang breeding record",
@@ -140,7 +143,10 @@
   "pig_detail_breeding_fab_log": "I-log ang pagpapalahi",
   "pig_detail_breeding_action_pregnancy_check": "Pregnancy check",
   "pig_detail_breeding_action_farrow": "I-log ang panganganak",
-  "pig_detail_breeding_row_inseminated": "Pinakipot",
+  "pig_detail_breeding_row_inseminated": "Pinaipot",
+  "@pig_detail_breeding_row_inseminated": {
+    "description": "TRANSLATION-REVIEW: fixed prior 'Pinakipot' (not a real Tagalog word). 'Pinaipot' is the colloquial PH farm verb for 'was bred/mated' covering both natural and AI. Alternative: keep English 'Inseminated' for medical register."
+  },
   "pig_detail_breeding_row_expected": "Inaasahang panganganak",
   "pig_detail_breeding_row_boar": "Bulugan",
   "pig_detail_breeding_check_error": "Hindi na-record ang check: {error}",
@@ -251,7 +257,7 @@
 
   "health_event_type_vaccination": "Bakuna",
   "@health_event_type_vaccination": {
-    "description": "TRANSLATION-REVIEW: 'Bakuna' is the standard loanword in PH for vaccine/vaccination. Widely understood — no review concern, but flagging in case formal 'Pagbabakuna' (the act) is preferred over 'Bakuna' (the noun)."
+    "description": "TRANSLATION-REVIEW: 'Bakuna' is the standard PH loanword and is used colloquially for both the substance and the act of vaccinating. Formal 'Pagbabakuna' is technically more correct for the event-type label, but feels stilted in chip/filter UI. Stick with 'Bakuna' unless native speaker says otherwise."
   },
   "health_event_type_treatment": "Paggamot",
   "health_event_type_checkup": "Checkup",
@@ -300,17 +306,14 @@
   "mortality_log_cause_label": "Sanhi",
   "mortality_log_cause_respiratory": "Respiratory",
   "@mortality_log_cause_respiratory": {
-    "description": "TRANSLATION-REVIEW: kept English medical term. 'Sa paghinga' (breathing-related) exists but is descriptive, not categorical. PH vets use English."
+    "description": "TRANSLATION-REVIEW: kept English medical term. 'Sakit sa paghinga' is descriptive but doesn't function as a category label. PH vets and feed-store staff use English for disease categories. Same rationale applies to mortality_log_cause_digestive."
   },
   "mortality_log_cause_digestive": "Digestive",
-  "@mortality_log_cause_digestive": {
-    "description": "TRANSLATION-REVIEW: kept English medical term. PH vets use English categorical labels."
-  },
   "mortality_log_cause_accident": "Aksidente",
   "mortality_log_cause_unknown": "Hindi alam",
   "mortality_log_cause_asf": "Pinaghihinalaang ASF",
   "@mortality_log_cause_asf": {
-    "description": "TRANSLATION-REVIEW: 'Pinaghihinalaang ASF' = Suspected ASF. ASF (African Swine Fever) kept as acronym — universally used in PH swine industry."
+    "description": "TRANSLATION-REVIEW: 'Pinaghihinalaang' = suspected (formal register). 'Hinihinalang' is also valid and slightly more colloquial. ASF acronym is universally recognized in PH swine industry — do not translate."
   },
   "mortality_log_cause_other": "Iba pa",
   "mortality_log_notes_hint": "Opsyonal",
@@ -423,9 +426,6 @@
   "payment_method_cash": "Cash",
   "payment_method_bank_transfer": "Bank transfer",
   "payment_method_gcash": "GCash",
-  "@payment_method_gcash": {
-    "description": "TRANSLATION-REVIEW: brand name kept as-is per i18n policy (brands/units never translated)."
-  },
   "payment_method_check": "Tseke",
   "payment_method_other": "Iba pa",
   "payment_status_paid": "Bayad na",
@@ -446,7 +446,7 @@
   "sale_log_section_date": "PETSA",
   "sale_log_section_pigs": "MGA BABOY SA BENTA",
   "sale_log_add_pigs": "Magdagdag ng baboy",
-  "sale_log_no_eligible_pigs": "Wala nang ibang babareng maidaragdag.",
+  "sale_log_no_eligible_pigs": "Wala nang baboy na puwedeng idagdag.",
   "sale_log_picker_title": "Pumili ng baboy",
   "sale_log_picker_add_button": "Idagdag ({count})",
   "sale_log_picker_search_hint": "Maghanap ayon sa tag ID",
@@ -476,9 +476,12 @@
   "expense_category_feed": "Pakain",
   "expense_category_medicine": "Gamot",
   "expense_category_labor": "Lakas-paggawa",
+  "@expense_category_labor": {
+    "description": "TRANSLATION-REVIEW: 'Lakas-paggawa' is the formal Filipino for 'labor' (the abstract input). 'Sahod' or 'Suweldo' (wages/salary) are more colloquial but narrow to wage costs and miss day-rate/casual labor. Alternatively keep English 'Labor'. yield_profitability_labor mirrors this choice."
+  },
   "expense_category_utilities": "Utilities",
   "@expense_category_utilities": {
-    "description": "TRANSLATION-REVIEW: kept English. 'Kuryente at tubig' (electricity & water) is descriptive but loses generality. 'Utilities' is widely understood in PH billing context."
+    "description": "TRANSLATION-REVIEW: kept English 'Utilities' for billing-category generality. Alternatives like 'Kuryente at tubig' (electricity & water) or 'Bayarin' (bills) are descriptive but either narrow or vague. PH billing context uses 'Utilities' on Meralco/utility company statements — workers recognize it."
   },
   "expense_category_equipment": "Kagamitan",
   "expense_category_maintenance": "Pagpapanatili",
@@ -613,7 +616,7 @@
   "equipment_list_fab_add": "Magdagdag ng kagamitan",
   "equipment_type_ventilation": "Ventilation",
   "@equipment_type_ventilation": {
-    "description": "TRANSLATION-REVIEW: kept English. 'Bentilasyon' exists as transliteration but English is more recognizable on farm equipment labels."
+    "description": "TRANSLATION-REVIEW: kept English 'Ventilation'. 'Bentilasyon' is a valid transliteration but PH ag-equipment catalogs and electrical/HVAC suppliers print 'Ventilation' on labels — workers recognize this spelling."
   },
   "equipment_type_feeder": "Feeder",
   "equipment_type_water_pump": "Water pump",
@@ -671,21 +674,12 @@
   "shift_pattern_weekly": "Lingguhan",
   "shift_dow_sun": "L",
   "@shift_dow_sun": {
-    "description": "TRANSLATION-REVIEW: 'Linggo' = L. Tagalog DoW initials L/L/M/M/H/B/S collide on Sun/Mon (both L) and Tue/Wed (both M) — distinct from English S/M/T/W/T/F/S. Confirm if 2-letter initials (Li/Lu/Ma/Mi/Hu/Bi/Sa) are clearer for shift calendar."
+    "description": "TRANSLATION-REVIEW: Day-of-week 1-letter chips. Tagalog day names Linggo/Lunes/Martes/Miyerkules/Huwebes/Biyernes/Sabado collapse to L/L/M/M/H/B/S — Sun/Mon both 'L', Tue/Wed both 'M'. The chip row is ordered Sun→Sat so position disambiguates, but native speakers commonly use Li/Lu/Ma/Mi/Hu/Bi/Sa (2-letter) to avoid confusion. If shift legibility complaints arise, switch all shift_dow_* keys to 2-letter form."
   },
   "shift_dow_mon": "L",
-  "@shift_dow_mon": {
-    "description": "TRANSLATION-REVIEW: 'Lunes' = L. Collides with 'Linggo' (Sunday). See @shift_dow_sun."
-  },
   "shift_dow_tue": "M",
   "shift_dow_wed": "M",
-  "@shift_dow_wed": {
-    "description": "TRANSLATION-REVIEW: 'Miyerkules' = M. Collides with 'Martes' (Tuesday). See @shift_dow_sun."
-  },
   "shift_dow_thu": "H",
-  "@shift_dow_thu": {
-    "description": "TRANSLATION-REVIEW: 'Huwebes' = H. Distinct from English T (Thursday) — native speakers should not be surprised."
-  },
   "shift_dow_fri": "B",
   "shift_dow_sat": "S",
 
@@ -726,7 +720,7 @@
   "task_create_assign_type_label": "Uri",
   "task_create_assign_none": "— walang nakatakda —",
   "task_create_assign_user": "Tukoy na user",
-  "task_create_assign_area": "Kahit sinong manggagawa sa isang lugar",
+  "task_create_assign_area": "Kahit sinong manggagawa sa lugar",
   "task_create_user_label": "User",
   "task_create_area_label": "Lugar",
   "task_create_submit": "Gumawa ng gawain",
@@ -738,17 +732,17 @@
   "area_purpose_breeding": "Pagpapalahi",
   "area_purpose_gestation": "Gestation",
   "@area_purpose_gestation": {
-    "description": "TRANSLATION-REVIEW: kept English. 'Pagbubuntis' (pregnancy) is medical/general; 'Gestation' is standard industry term for the pen-type."
+    "description": "TRANSLATION-REVIEW: kept English. 'Pagbubuntis' (pregnancy, the biological state) doesn't capture the pen-type sense; 'Gestation' is the standard industry term for the housing area where pregnant sows are kept. Loanword."
   },
   "area_purpose_farrowing": "Panganganak",
   "area_purpose_nursery": "Nursery",
   "area_purpose_grow_finish": "Grow-Finish",
   "@area_purpose_grow_finish": {
-    "description": "TRANSLATION-REVIEW: kept 'Grow-Finish' as English term; some PH farms use 'Pataba' (fattening). Confirm regional preference."
+    "description": "TRANSLATION-REVIEW: 'Grow-Finish' is the commercial swine industry term covering both growing and finishing stages. 'Pataba' (fattening) is colloquial but only covers the finishing half. Loanword stays for parity with batch_type_grow_finish."
   },
   "area_purpose_quarantine": "Quarantine",
   "@area_purpose_quarantine": {
-    "description": "TRANSLATION-REVIEW: kept English; 'Kuwarentinas' exists but less common in farm context. Post-COVID, 'Quarantine' is the universally understood term."
+    "description": "TRANSLATION-REVIEW: kept English. 'Kuwarentinas' is a valid transliteration but post-COVID, 'Quarantine' is universally understood across PH (and printed on biosecurity signage at farms)."
   },
   "area_purpose_boar_pen": "Kulungan ng Bulugan",
   "area_purpose_isolation": "Isolation",
@@ -788,7 +782,7 @@
   "invite_member_role_label": "Tungkulin",
   "invite_member_submit": "Ipadala ang imbitasyon",
   "invite_member_email_required": "Kailangan ang email.",
-  "invite_member_owner_omitted_note": "Ang tungkulin ng Owner ay hindi kasama: isang owner lang per farm; ang ownership transfer ay hiwalay na flow.",
+  "invite_member_owner_omitted_note": "Hindi kasama ang Owner: isang owner lang kada farm. Hiwalay na proseso ang paglilipat ng ownership.",
 
   "photo_upload_retry_pending": "Hindi na-upload ang larawan. Susubukang muli kapag online.",
   "photo_upload_terminal": "Hindi na-upload ang larawan: {code}."
